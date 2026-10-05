@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Keyword & Hashtag Search System</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Action Bar -->
+    <header class="app-header">
+      <div class="header-titles">
+        <h1>Event Keyword & Hashtag Search</h1>
+        <p class="subtitle">Powered by Wigolo web retrieval and deterministic Python processing</p>
+      </div>
+      <button id="create-event-btn" class="btn btn-secondary" title="Reset current event and clear Wigolo search cache">
+        <span class="btn-icon">↺</span> Create Event
+      </button>
+    </header>
+
+    <!-- Notification / Status Banner -->
+    <div id="status-banner" class="status-banner hidden" role="alert"></div>
+
+    <!-- Main Form Section -->
+    <main class="main-card">
+      <form id="event-form" onsubmit="return false;">
+        <!-- Event Field -->
+        <div class="form-group">
+          <label for="event-input">Event <span class="required">*</span></label>
+          <input 
+            type="text" 
+            id="event-input" 
+            placeholder="e.g. Women's Safety" 
+            autocomplete="off"
+            required
+          >
+        </div>
+
+        <!-- Location Field -->
+        <div class="form-group">
+          <label for="location-input">Location <span class="required">*</span></label>
+          <input 
+            type="text" 
+            id="location-input" 
+            placeholder="e.g. Delhi" 
+            autocomplete="off"
+            required
+          >
+        </div>
+
+        <!-- Description Field -->
+        <div class="form-group">
+          <label for="description-input">Description <span class="required">*</span></label>
+          <textarea 
+            id="description-input" 
+            rows="4" 
+            placeholder="e.g. Information and public discussions related to women's safety, awareness, prevention, emergency support, and safety initiatives in Delhi."
+            required></textarea>
+        </div>
+
+
+        <!-- Social Discussions Option -->
+        <div class="form-group checkbox-group">
+          <label class="checkbox-label" for="include-social-checkbox">
+            <input type="checkbox" id="include-social-checkbox" checked>
+            <span>Include Public Social Discussions <small class="text-muted">(Reddit, X/Twitter, YouTube)</small></span>
+          </label>
+        </div>
+      </form>
+
+      <!-- Results & Action Section -->
+      <section class="results-section">
+        <div class="results-header">
+          <h2>Keywords &amp; Hashtags</h2>
+          <div class="action-buttons">
+            <div class="generate-btn-wrapper">
+              <button id="generate-btn" class="btn btn-primary">
+                <span id="generate-spinner" class="spinner hidden"></span>
+                <span id="generate-btn-text">Generate</span>
+              </button>
+              <div id="engines-display" class="engines-display hidden"></div>
+            </div>
+            <button 
+              id="edit-toggle-btn" 
+              class="btn btn-icon-only" 
+              title="Toggle Edit Mode (Off by default)" 
+              aria-label="Toggle Edit Mode"
+            >
+              <span id="edit-icon">✎</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Read-Only Results View (Default: EDIT MODE OFF) -->
+        <div id="read-only-view" class="results-view">
+          <div class="result-block">
+            <h3>Hashtags</h3>
+            <div id="readonly-hashtags" class="comma-separated-text empty-placeholder">
+              No hashtags generated yet. Click "Generate" to search and extract.
+            </div>
+          </div>
+
+          <div class="result-block">
+            <h3>Keywords</h3>
+            <div id="readonly-keywords" class="comma-separated-text empty-placeholder">
+              No keywords generated yet. Click "Generate" to search and extract.
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Edit View (Activated when EDIT MODE IS ON) -->
+        <div id="edit-view" class="results-view hidden">
+          <div class="edit-mode-indicator">
+            <span class="badge">Edit Mode Active</span>
+            <small>Modify items, add new ones, or click × to remove. Click <strong>✓</strong> to save changes.</small>
+          </div>
+
+          <!-- Editable Hashtags -->
+          <div class="result-block">
+            <div class="block-title-row">
+              <h3>Hashtags</h3>
+              <div class="add-item-form">
+                <input type="text" id="new-hashtag-input" placeholder="#NewHashtag" autocomplete="off">
+                <button type="button" id="add-hashtag-btn" class="btn btn-small">+ Add Hashtag</button>
+              </div>
+            </div>
+            <div id="editable-hashtags-container" class="tags-container"></div>
+          </div>
+
+          <!-- Editable Keywords -->
+          <div class="result-block">
+            <div class="block-title-row">
+              <h3>Keywords</h3>
+              <div class="add-item-form">
+                <input type="text" id="new-keyword-input" placeholder="new keyword phrase" autocomplete="off">
+                <button type="button" id="add-keyword-btn" class="btn btn-small">+ Add Keyword</button>
+              </div>
+            </div>
+            <div id="editable-keywords-container" class="tags-container"></div>
+          </div>
+        </div>
+
+        <!-- Web Sources Retrieved by Wigolo -->
+        <div id="sources-section" class="sources-section hidden">
+          <h3>Web Sources Retrieved by Wigolo</h3>
+          <ul id="sources-list" class="sources-list"></ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <small>Wigolo searches the web and retrieves content &bull; Python deterministically extracts hashtags &amp; keywords &bull; No LLMs used</small>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
