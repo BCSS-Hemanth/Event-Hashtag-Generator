@@ -5,7 +5,7 @@ Endpoints:
 - GET /health: Liveness / readiness check for the API process.
 - POST /generate: Validates Event, Location, Description; searches web via Wigolo;
   extracts hashtags and keywords using deterministic Python processing.
-- POST /event-hashtags: Dedicated event hashtag generation (same pipeline as /generate).
+- POST /event-terms: Same pipeline as /generate; returns hashtags and keywords for monitoring.
 - POST /create-event: Clears Wigolo's search cache and resets server-side state.
 - GET /: Serves the frontend web interface.
 """
@@ -87,8 +87,8 @@ class HealthResponse(BaseModel):
     version: str
 
 
-class EventHashtagsResponse(BaseModel):
-    """Response for POST /event-hashtags — hashtags and keywords."""
+class EventTermsResponse(BaseModel):
+    """Response for POST /event-terms — hashtags and keywords for event monitoring."""
 
     hashtags: List[str]
     keywords: List[str]
@@ -392,16 +392,20 @@ async def generate_keywords_and_hashtags(
     return await run_generation_pipeline(req)
 
 
-@app.post("/event-hashtags", response_model=EventHashtagsResponse)
-async def event_hashtags(req: GenerateRequest) -> EventHashtagsResponse:
+@app.post(
+    "/event-terms",
+    response_model=EventTermsResponse,
+    summary="Generate event hashtags and keywords",
+)
+async def event_terms(req: GenerateRequest) -> EventTermsResponse:
     """
-    Generate hashtags and keywords for an event.
+    Generate search terms for an event: **hashtags** and **keywords**.
 
     Same validation and Wigolo + text-processing pipeline as POST /generate.
-    Returns both hashtags and keywords for event monitoring search terms.
+    Use these terms for event monitoring (Blurasaga Keywords field).
     """
     result = await run_generation_pipeline(req)
-    return EventHashtagsResponse(
+    return EventTermsResponse(
         hashtags=result.hashtags,
         keywords=result.keywords,
     )
