@@ -2,8 +2,10 @@
 FastAPI Application for Event Keyword & Hashtag Search System.
 
 Endpoints:
+- GET /health: Liveness / readiness check for the API process.
 - POST /generate: Validates Event, Location, Description; searches web via Wigolo;
   extracts hashtags and keywords using deterministic Python processing.
+- POST /event-hashtags: Dedicated event hashtag generation (same pipeline as /generate).
 - POST /create-event: Clears Wigolo's search cache and resets server-side state.
 - GET /: Serves the frontend web interface.
 """
@@ -78,6 +80,17 @@ class CreateEventResponse(BaseModel):
     success: bool
     message: str
 
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str
+
+
+class EventHashtagsResponse(BaseModel):
+    """Response for POST /event-hashtags — hashtags only."""
+
+    hashtags: List[str]
 
 def build_search_query(event: str, location: str, description: str) -> str:
     """
@@ -342,6 +355,16 @@ async def event_generator(req: GenerateRequest):
         yield f"data: {json.dumps({'type': 'error', 'detail': str(ex)})}\n\n"
 
 
+@app.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    """Liveness check — confirms the API process is up and responding."""
+    return HealthResponse(
+        status="ok",
+        service="event-keyword-hashtag-search",
+        version=app.version or "1.0.0",
+    )
+
+
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_keywords_and_hashtags(
     req: GenerateRequest,
@@ -367,6 +390,17 @@ async def generate_keywords_and_hashtags(
 
     return await run_generation_pipeline(req)
 
+
+@app.post("/event-hashtags", response_model=EventHashtagsResponse)
+async def event_hashtags(req: GenerateRequest) -> EventHashtagsResponse:
+    """
+    Generate hashtags for an event.
+
+    Same validation and Wigolo + text-processing pipeline as POST /generate,
+    but returns only the hashtags list.
+    """
+    result = await run_generation_pipeline(req)
+    return EventHashtagsResponse(hashtags=result.hashtags)
 
 
 @app.post("/create-event", response_model=CreateEventResponse)
