@@ -17,7 +17,7 @@ Content type for JSON endpoints: `application/json`
 | `GET` | `/health` | Health / liveness check |
 | `GET` | `/static/*` | Static frontend assets (CSS, JS) |
 | `POST` | `/generate` | Generate hashtags and keywords |
-| `POST` | `/event-hashtags` | Generate event hashtags (dedicated API) |
+| `POST` | `/event-hashtags` | Generate event hashtags and keywords |
 | `POST` | `/create-event` | Reset state and clear Wigolo search cache |
 
 ---
@@ -187,7 +187,7 @@ Combined missing fields:
 
 ## `POST /event-hashtags`
 
-Dedicated event-hashtag API. Same request body as `POST /generate`, but the response contains **only hashtags**.
+Dedicated event API. Same request body and pipeline as `POST /generate`. Response includes **hashtags and keywords**.
 
 ### Example request
 
@@ -205,7 +205,8 @@ curl -s -X POST http://127.0.0.1:8000/event-hashtags \
 
 ```json
 {
-  "hashtags": ["#TechnologyConference", "#Hyderabad", "#ArtificialIntelligence"]
+  "hashtags": ["#TechnologyConference", "#Hyderabad", "#ArtificialIntelligence"],
+  "keywords": ["technology conference hyderabad", "AI conference", "cloud computing"]
 }
 ```
 

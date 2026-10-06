@@ -88,9 +88,10 @@ class HealthResponse(BaseModel):
 
 
 class EventHashtagsResponse(BaseModel):
-    """Response for POST /event-hashtags — hashtags only."""
+    """Response for POST /event-hashtags — hashtags and keywords."""
 
     hashtags: List[str]
+    keywords: List[str]
 
 def build_search_query(event: str, location: str, description: str) -> str:
     """
@@ -394,13 +395,16 @@ async def generate_keywords_and_hashtags(
 @app.post("/event-hashtags", response_model=EventHashtagsResponse)
 async def event_hashtags(req: GenerateRequest) -> EventHashtagsResponse:
     """
-    Generate hashtags for an event.
+    Generate hashtags and keywords for an event.
 
-    Same validation and Wigolo + text-processing pipeline as POST /generate,
-    but returns only the hashtags list.
+    Same validation and Wigolo + text-processing pipeline as POST /generate.
+    Returns both hashtags and keywords for event monitoring search terms.
     """
     result = await run_generation_pipeline(req)
-    return EventHashtagsResponse(hashtags=result.hashtags)
+    return EventHashtagsResponse(
+        hashtags=result.hashtags,
+        keywords=result.keywords,
+    )
 
 
 @app.post("/create-event", response_model=CreateEventResponse)
