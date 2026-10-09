@@ -107,6 +107,33 @@ async def main():
     print("PASSED: Multi-part location generated valid, clean hashtags and differentiated keywords.")
 
     print("\n==================================================")
+    print("TEST 6: EVENT 4 - Odisha Textbook Controversy (Entity Breakdown)")
+    print("==================================================")
+    req4 = GenerateRequest(
+        event="Textbook Controversy",
+        location="Bhubaneswar, Odisha",
+        description="Student protests over textbook errors and historical inaccuracies in Odisha.",
+    )
+    res4 = await generate_keywords_and_hashtags(req4)
+
+    print("Returned Hashtags (First):")
+    for i, tag in enumerate(res4.hashtags, 1):
+        print(f"  {i}. {tag}")
+
+    print("\nReturned Keywords (Second):")
+    for i, kw in enumerate(res4.keywords, 1):
+        print(f"  {i}. {kw}")
+
+    if res4.entities:
+        print("\nExtracted 4-Pillar Entities:")
+        for category, items in res4.entities.items():
+            print(f"  {category}: {items}")
+
+    assert len(res4.hashtags) > 0, "Hashtags should not be empty"
+    assert len(res4.keywords) > 0, "Keywords should not be empty"
+    print("PASSED: Odisha textbook controversy generated valid hashtags, keywords, and entities.")
+
+    print("\n==================================================")
     print("ALL TESTS COMPLETED SUCCESSFULLY!")
     print("==================================================")
 

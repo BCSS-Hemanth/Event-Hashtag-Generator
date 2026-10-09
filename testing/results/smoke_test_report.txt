@@ -1,0 +1,112 @@
+================================================================================
+EVENT KEYWORD & HASHTAG GENERATOR - SMOKE TEST EXECUTION REPORT
+Timestamp: 2026-10-09 13:41:34
+Total Events Evaluated: 52
+================================================================================
+
+EXECUTIVE TEST SUMMARY:
+--------------------------------------------------------------------------------
+Overall Status:           ATTENTION REQUIRED
+Pass Rate:                73.1% (38/52 Passed, 14 Failed)
+Average Precision:        0.7341 (73.41%)
+Average Recall:           0.5571 (55.71%)
+Average F1-Score:         0.6193
+Average Relevance Rate:   73.41%
+Average Duplicate Rate:   0.00% (Target: 0.00%)
+Junk N-Gram Rate:         0.00% (Target: 0.00%)
+Hashtag Validity Rate:    100.00% (Target: 100.00%)
+Average Request Latency:  92.85s
+Total Terms Generated:    949 (Keywords: 564, Hashtags: 385)
+Total Relevant Terms:     687 (72.39%)
+Total Irrelevant Terms:   262 (27.61%)
+
+REGIONAL BREAKDOWN:
+--------------------------------------------------------------------------------
+- Central   :  5 Events | Pass:  60.0% | Avg Precision: 0.726 | Avg Recall: 0.569
+- East      : 11 Events | Pass:  72.7% | Avg Precision: 0.698 | Avg Recall: 0.556
+- North     : 10 Events | Pass:  80.0% | Avg Precision: 0.751 | Avg Recall: 0.540
+- Northeast :  2 Events | Pass: 100.0% | Avg Precision: 0.825 | Avg Recall: 0.692
+- South     : 14 Events | Pass:  71.4% | Avg Precision: 0.721 | Avg Recall: 0.528
+- West      : 10 Events | Pass:  70.0% | Avg Precision: 0.761 | Avg Recall: 0.583
+
+CATEGORY BREAKDOWN:
+--------------------------------------------------------------------------------
+- Education             :  3 Events | Pass:  66.7% | Avg Precision: 0.719 | Avg Recall: 0.406
+- Environment           :  6 Events | Pass:  66.7% | Avg Precision: 0.691 | Avg Recall: 0.447
+- Festivals             : 15 Events | Pass:  86.7% | Avg Precision: 0.768 | Avg Recall: 0.653
+- Government Initiatives:  3 Events | Pass: 100.0% | Avg Precision: 0.796 | Avg Recall: 0.598
+- Politics              :  2 Events | Pass: 100.0% | Avg Precision: 0.701 | Avg Recall: 0.417
+- Protests              :  6 Events | Pass:  83.3% | Avg Precision: 0.746 | Avg Recall: 0.569
+- Public Affairs        :  4 Events | Pass: 100.0% | Avg Precision: 0.860 | Avg Recall: 0.674
+- Social Issues         :  4 Events | Pass:  50.0% | Avg Precision: 0.688 | Avg Recall: 0.479
+- Sports                :  3 Events | Pass:   0.0% | Avg Precision: 0.611 | Avg Recall: 0.464
+- Technology            :  6 Events | Pass:  50.0% | Avg Precision: 0.675 | Avg Recall: 0.538
+
+DETAILED EVENT EXECUTION LOG:
+--------------------------------------------------------------------------------
+[EVT_01] Farmers Protest at Shambhu Border        | North     | PASS | Prec: 0.78 | Rec: 0.47 | F1: 0.59 |  9.0s
+[EVT_02] Delhi Air Pollution Emergency and GRAP I | North     | PASS | Prec: 0.77 | Rec: 0.44 | F1: 0.56 |  8.6s
+[EVT_03] Ayodhya Ram Mandir Pran Pratishtha       | North     | PASS | Prec: 0.79 | Rec: 0.69 | F1: 0.73 | 11.9s
+[EVT_04] Joshimath Land Subsidence Crisis         | North     | PASS | Prec: 0.69 | Rec: 0.53 | F1: 0.60 |  8.6s
+[EVT_05] G20 Tourism Working Group in Srinagar    | North     | PASS | Prec: 0.93 | Rec: 0.60 | F1: 0.73 | 16.6s
+[EVT_06] Khelo India Winter Games in Gulmarg      | North     | FAIL | Prec: 0.57 | Rec: 0.64 | F1: 0.60 | 17.6s
+      -> Reasons: Precision below threshold (0.57 < 0.65)
+[EVT_07] Shimla Urban Water Crisis and Tourism Im | North     | PASS | Prec: 0.82 | Rec: 0.58 | F1: 0.68 | 16.7s
+[EVT_08] Khatkar Toll Plaza Protests in Jind      | North     | FAIL | Prec: 0.59 | Rec: 0.33 | F1: 0.43 | 20.1s
+      -> Reasons: Precision below threshold (0.59 < 0.65)
+[EVT_09] Maha Kumbh Mela Preparations in Prayagra | North     | PASS | Prec: 0.86 | Rec: 0.62 | F1: 0.72 | 28.6s
+[EVT_10] Kashi Vishwanath Corridor Pilgrimage Sur | North     | PASS | Prec: 0.71 | Rec: 0.50 | F1: 0.59 | 28.2s
+[EVT_11] Bengaluru Tech Summit 2024               | South     | FAIL | Prec: 0.60 | Rec: 0.47 | F1: 0.53 | 28.8s
+      -> Reasons: Precision below threshold (0.60 < 0.65)
+[EVT_12] Cauvery Water Dispute Bandh in Bengaluru | South     | PASS | Prec: 0.83 | Rec: 0.64 | F1: 0.72 | 32.0s
+[EVT_13] Aero India Air Show at Yelahanka         | South     | PASS | Prec: 0.68 | Rec: 0.31 | F1: 0.42 | 39.8s
+[EVT_14] Jallikattu Bull Taming Festival in Alang | South     | PASS | Prec: 0.80 | Rec: 0.64 | F1: 0.71 | 42.5s
+[EVT_15] Ennore Creek Oil Spill Environmental Dis | South     | PASS | Prec: 0.65 | Rec: 0.33 | F1: 0.44 | 39.2s
+[EVT_16] Formula 4 Indian Street Circuit Night Ra | South     | FAIL | Prec: 0.62 | Rec: 0.25 | F1: 0.36 | 44.0s
+      -> Reasons: Precision below threshold (0.62 < 0.65)
+[EVT_17] Wayanad Landslides Disaster and Relief   | South     | FAIL | Prec: 0.60 | Rec: 0.53 | F1: 0.56 | 54.2s
+      -> Reasons: Precision below threshold (0.60 < 0.65)
+[EVT_18] Thrissur Pooram Festival and Kudamattom  | South     | PASS | Prec: 0.71 | Rec: 0.57 | F1: 0.63 | 57.1s
+[EVT_19] Kochi-Muziris Biennale Contemporary Art  | South     | PASS | Prec: 0.95 | Rec: 0.75 | F1: 0.84 | 62.8s
+[EVT_20] Global AI Summit at HICC Hyderabad       | South     | PASS | Prec: 0.76 | Rec: 0.71 | F1: 0.74 | 60.4s
+[EVT_21] Hyderabad E-Prix Formula E Championship  | South     | FAIL | Prec: 0.64 | Rec: 0.50 | F1: 0.56 | 66.3s
+      -> Reasons: Precision below threshold (0.64 < 0.65)
+[EVT_22] Bonalu Festival Celebrations in Hyderaba | South     | PASS | Prec: 0.70 | Rec: 0.85 | F1: 0.77 | 70.0s
+[EVT_23] Chandrayaan-3 Moon Mission Launch        | South     | PASS | Prec: 0.83 | Rec: 0.33 | F1: 0.48 | 70.4s
+[EVT_24] Amaravati Capital City Farmer Protests   | South     | PASS | Prec: 0.71 | Rec: 0.50 | F1: 0.59 | 71.5s
+[EVT_25] Maratha Reservation Morcha in Mumbai     | West      | PASS | Prec: 0.89 | Rec: 0.71 | F1: 0.79 | 76.8s
+[EVT_26] Pune Ganesh Visarjan Immersion Processio | West      | PASS | Prec: 0.82 | Rec: 0.64 | F1: 0.72 | 82.1s
+[EVT_27] Mumbai Coastal Road Project Inauguration | West      | PASS | Prec: 0.88 | Rec: 0.46 | F1: 0.60 | 83.1s
+[EVT_28] Vibrant Gujarat Global Summit in Gandhin | West      | FAIL | Prec: 0.65 | Rec: 0.57 | F1: 0.61 | 83.2s
+      -> Reasons: Precision below threshold (0.65 < 0.65)
+[EVT_29] International Kite Festival Uttarayan in | West      | FAIL | Prec: 0.62 | Rec: 0.67 | F1: 0.65 | 103.9s
+      -> Reasons: Precision below threshold (0.62 < 0.65)
+[EVT_30] National Unity Day Rashtriya Ekta Diwas  | West      | PASS | Prec: 0.77 | Rec: 0.93 | F1: 0.84 | 104.1s
+[EVT_31] Jaipur Literature Festival at Hotel Clar | West      | PASS | Prec: 0.78 | Rec: 0.46 | F1: 0.58 | 104.2s
+[EVT_32] Pushkar International Camel and Livestoc | West      | PASS | Prec: 0.83 | Rec: 0.75 | F1: 0.79 | 104.2s
+[EVT_33] Kota Coaching Center Student Safety Fram | West      | PASS | Prec: 0.83 | Rec: 0.38 | F1: 0.53 | 124.7s
+[EVT_34] International Film Festival of India (IF | West      | FAIL | Prec: 0.55 | Rec: 0.25 | F1: 0.34 | 124.7s
+      -> Reasons: Precision below threshold (0.55 < 0.65)
+[EVT_35] RG Kar Hospital Doctors Strike in Kolkat | East      | PASS | Prec: 0.67 | Rec: 0.50 | F1: 0.57 | 124.8s
+[EVT_36] Kolkata Durga Puja Carnival along Red Ro | East      | PASS | Prec: 0.81 | Rec: 0.58 | F1: 0.68 | 124.7s
+[EVT_37] Darjeeling Tea Garden Minimum Wage Agita | East      | FAIL | Prec: 0.48 | Rec: 0.45 | F1: 0.47 | 147.9s
+      -> Reasons: Precision below threshold (0.48 < 0.65)
+[EVT_38] Puri Jagannath Rath Yatra Festival       | East      | PASS | Prec: 0.90 | Rec: 0.71 | F1: 0.80 | 147.8s
+[EVT_39] Odisha School Textbook Controversy       | East      | FAIL | Prec: 0.63 | Rec: 0.50 | F1: 0.56 | 147.4s
+      -> Reasons: Precision below threshold (0.63 < 0.65)
+[EVT_40] Make in Odisha Conclave in Bhubaneswar   | East      | FAIL | Prec: 0.53 | Rec: 0.83 | F1: 0.65 | 147.6s
+      -> Reasons: Precision below threshold (0.53 < 0.65)
+[EVT_41] BPSC Teacher Recruitment Aspirants Prote | East      | PASS | Prec: 0.69 | Rec: 0.33 | F1: 0.45 | 156.1s
+[EVT_42] Chhath Puja Sun Worship at Ganga Ghats i | East      | PASS | Prec: 0.74 | Rec: 0.69 | F1: 0.71 | 156.1s
+[EVT_43] Bihar Caste-Based Survey Report Release  | East      | PASS | Prec: 0.69 | Rec: 0.33 | F1: 0.45 | 156.6s
+[EVT_44] Sammed Shikharji Jain Pilgrimage Protect | East      | PASS | Prec: 0.73 | Rec: 0.75 | F1: 0.74 | 159.8s
+[EVT_45] National Tribal Youth Festival in Ranchi | East      | PASS | Prec: 0.81 | Rec: 0.42 | F1: 0.55 | 170.6s
+[EVT_46] Project Cheetah in Kuno National Park    | Central   | PASS | Prec: 0.90 | Rec: 0.54 | F1: 0.67 | 170.5s
+[EVT_47] Mahakal Lok Corridor Pilgrimage Expansio | Central   | PASS | Prec: 0.80 | Rec: 0.83 | F1: 0.82 | 171.1s
+[EVT_48] Pravasi Bharatiya Divas Convention in In | Central   | PASS | Prec: 0.92 | Rec: 0.58 | F1: 0.71 | 173.5s
+[EVT_49] Hasdeo Arand Forest Coal Mining Protests | Central   | FAIL | Prec: 0.54 | Rec: 0.31 | F1: 0.39 | 194.1s
+      -> Reasons: Precision below threshold (0.54 < 0.65)
+[EVT_50] Bastar Dussehra 75-Day Tribal Festival   | Central   | FAIL | Prec: 0.47 | Rec: 0.58 | F1: 0.52 | 193.6s
+      -> Reasons: Precision below threshold (0.47 < 0.65)
+[EVT_51] Bihu Guinness World Record Dance Perform | Northeast | PASS | Prec: 0.85 | Rec: 1.00 | F1: 0.92 | 193.4s
+[EVT_52] Hornbill Festival at Kisama Heritage Vil | Northeast | PASS | Prec: 0.80 | Rec: 0.38 | F1: 0.52 | 196.6s

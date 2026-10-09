@@ -1,0 +1,36 @@
+OFFLINE SMOKE TEST — Unique India Events
+Events: 52 | Mode: process_content + mock web (noise injected)
+Elapsed: 1.8s
+
+=== OVERALL ACCURACY ===
+Pass rate:           51/52 = 98.1%
+Avg Precision:       91.0%
+Avg Recall:          62.8%
+Avg F1:              73.0%
+Avg Relevance rate:  91.0%
+Micro relevance:     90.9%  (697/767 terms)
+
+=== BY REGION ===
+  Central      pass 5/5 (100%)  P=92% R=54% F1=66%
+  East         pass 10/11 (91%)  P=88% R=62% F1=72%
+  North        pass 10/10 (100%)  P=93% R=59% F1=72%
+  Northeast    pass 2/2 (100%)  P=90% R=50% F1=64%
+  South        pass 14/14 (100%)  P=91% R=65% F1=74%
+  West         pass 10/10 (100%)  P=91% R=72% F1=80%
+
+=== BY CATEGORY ===
+  Education                pass 3/3 (100%)  P=95% R=63% F1=74%
+  Environment              pass 6/6 (100%)  P=94% R=49% F1=64%
+  Festivals                pass 15/15 (100%)  P=90% R=65% F1=75%
+  Government Initiatives   pass 3/3 (100%)  P=95% R=62% F1=75%
+  Politics                 pass 1/2 (50%)  P=75% R=71% F1=73%
+  Protests                 pass 6/6 (100%)  P=95% R=65% F1=77%
+  Public Affairs           pass 4/4 (100%)  P=96% R=68% F1=79%
+  Social Issues            pass 4/4 (100%)  P=88% R=71% F1=78%
+  Sports                   pass 3/3 (100%)  P=81% R=62% F1=69%
+  Technology               pass 6/6 (100%)  P=91% R=57% F1=68%
+
+=== FAILURES (1) ===
+  EVT_43 Bihar Caste-Based Survey Report Release
+    P=0.63 R=0.50 | Precision below threshold (0.63 < 0.65)
+    irr: Extremely Backward Classes (EBC), Other Backward Classes (OBC), #EBC

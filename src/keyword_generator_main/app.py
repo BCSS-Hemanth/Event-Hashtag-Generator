@@ -69,6 +69,8 @@ class GenerateResponse(BaseModel):
     # IMPORTANT: Hashtags must appear first, Keywords second
     hashtags: List[str]
     keywords: List[str]
+    # Structured event facts (about, leaders, venues, acronyms as [{full, short}], …)
+    entities: Optional[Dict[str, Any]] = None
     sources: List[SearchSource] = []
     engines_used: List[str] = []
     primary_engine: str = ""
@@ -82,15 +84,14 @@ class CreateEventResponse(BaseModel):
 def build_search_query(event: str, location: str, description: str) -> str:
     """
     Construct a focused search query combining Event, Location, and Description.
-    Strips conversational question phrases and noise words to help the search engine
-    retrieve high-quality, relevant web articles.
+    Prefer user-provided full names / expansions so short forms do not
+    retrieve unrelated same-acronym organizations.
     """
     clean_event = event.strip()
     clean_location = re.sub(r"[,;/|]+", " ", location).strip()
     clean_location = re.sub(r"\s+", " ", clean_location)
     clean_desc = description.strip()
 
-    # Remove common conversational filler patterns
     conversational_patterns = [
         r"like\s+what\s+(?:they\s+are|they're)\s+doing",
         r"why\s+(?:they\s+are|are|they're)\s+doing\s+it",
@@ -104,23 +105,61 @@ def build_search_query(event: str, location: str, description: str) -> str:
     for pat in conversational_patterns:
         cleaned_desc = re.sub(pat, " ", cleaned_desc, flags=re.IGNORECASE)
 
-    # Extract meaningful keywords from the description (skipping filler words)
     filler_words = {
         "like", "what", "they", "are", "doing", "why", "their", "them", "and",
         "the", "for", "with", "from", "about", "into", "this", "that", "there"
     }
+
+    # Prefer quoting a multi-word org/name from description (helps short-form events)
+    primary_identity = clean_event
+    clauses = [c.strip() for c in re.split(r"[,;]", cleaned_desc) if c.strip()]
+    skip = {"of", "and", "the", "for", "in", "at", "a", "an", "on", "to", "by"}
+    org_hint = {
+        "party", "union", "sangathan", "morcha", "forum", "committee", "front",
+        "association", "movement", "alliance", "board", "commission",
+    }
+    # Only ALL-CAPS tokens count as short forms (not Title Case words)
+    event_acro_tokens = {
+        t for t in re.findall(r"[A-Za-z]{2,6}", clean_event)
+        if t.isupper()
+    }
+    if clean_event.isupper() and 2 <= len(clean_event) <= 6:
+        event_acro_tokens.add(clean_event)
+
+    for clause in clauses:
+        words = re.findall(r"[A-Za-z0-9]+", clause)
+        meaningful = [w for w in words if w.lower() not in skip]
+        if len(meaningful) < 2:
+            continue
+        initials = "".join(w[0].upper() for w in meaningful if w[0].isalpha())
+        has_org_word = any(w.lower() in org_hint for w in meaningful)
+        matches_short = initials in event_acro_tokens or any(
+            initials.startswith(a) or a.startswith(initials) for a in event_acro_tokens
+        )
+        if has_org_word or matches_short or (
+            event_acro_tokens and len(meaningful) >= 3
+        ):
+            primary_identity = f"\"{clause.strip()}\""
+            break
+        # If event contains a short ALL-CAPS token, prefer first multi-word description clause
+        if event_acro_tokens and len(meaningful) >= 2:
+            primary_identity = f"\"{clause.strip()}\""
+            break
+
     desc_words = [
         w for w in re.findall(r"[A-Za-z0-9]+", cleaned_desc)
         if w.lower() not in filler_words and len(w) > 2
     ]
+    # Avoid duplicating words already inside the quoted identity
+    identity_tokens = {t.lower() for t in re.findall(r"[A-Za-z0-9]+", primary_identity)}
+    desc_words = [w for w in desc_words if w.lower() not in identity_tokens]
     meaningful_desc = " ".join(desc_words[:8])
 
-    # Combine Event + Location + meaningful Description terms
-    parts = [clean_event, clean_location]
+    parts = [primary_identity, clean_event if primary_identity != clean_event else "", clean_location]
     if meaningful_desc:
         parts.append(meaningful_desc)
 
-    return " ".join(parts).strip()
+    return " ".join(p for p in parts if p).strip()
 
 
 async def run_generation_pipeline(
@@ -276,6 +315,7 @@ async def run_generation_pipeline(
     return GenerateResponse(
         hashtags=processed["hashtags"],
         keywords=processed["keywords"],
+        entities=processed.get("entities", {}),
         sources=sources,
         engines_used=search_engines_used,
     )
@@ -331,6 +371,7 @@ async def event_generator(req: GenerateRequest):
             "type": "result",
             "hashtags": result.hashtags,
             "keywords": result.keywords,
+            "entities": result.entities,
             "sources": [s.model_dump() for s in result.sources],
             "engines_used": result.engines_used,
         }

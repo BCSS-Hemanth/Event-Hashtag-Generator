@@ -2,11 +2,11 @@
 Keyword Generator Main Entrypoint.
 """
 
-import uvicorn
-
 
 def main() -> None:
     """Run the FastAPI application with Uvicorn server."""
+    import uvicorn
+
     uvicorn.run("keyword_generator_main.app:app", host="127.0.0.1", port=8000, reload=True)
 
 
