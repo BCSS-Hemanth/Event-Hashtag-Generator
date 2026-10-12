@@ -4,6 +4,7 @@ FastAPI Application for Event Keyword & Hashtag Search System.
 Endpoints:
 - POST /generate: Validates Event, Location, Description; searches web via Wigolo;
   extracts hashtags and keywords using deterministic Python processing.
+- POST /event-terms: Same pipeline as /generate; returns only hashtags and keywords.
 - POST /create-event: Clears Wigolo's search cache and resets server-side state.
 - GET /: Serves the frontend web interface.
 """
@@ -87,6 +88,24 @@ class GenerateResponse(BaseModel):
     sources: List[SearchSource] = []
     engines_used: List[str] = []
     primary_engine: str = ""
+
+
+class EventTermsRequest(BaseModel):
+    event: str = Field(..., description="Name or topic of the event")
+    location: str = Field(..., description="Location of the event")
+    description: str = Field(..., description="Detailed description of the event")
+    languages: List[str] = Field(
+        ...,
+        min_length=1,
+        description="Language codes (or, ta, te, kn, ml, mr, gu, bn, pa, hi) and/or 'all'",
+    )
+
+
+class EventTermsResponse(BaseModel):
+    """Response for POST /event-terms — hashtags and keywords only."""
+
+    hashtags: List[str]
+    keywords: List[str]
 
 
 class CreateEventResponse(BaseModel):
@@ -708,6 +727,22 @@ async def generate_keywords_and_hashtags(
 
     return await run_generation_pipeline(req)
 
+
+
+@app.post(
+    "/event-terms",
+    response_model=EventTermsResponse,
+    summary="Generate event hashtags and keywords",
+)
+async def event_terms(body: EventTermsRequest) -> EventTermsResponse:
+    """
+    Generate search terms for an event: **hashtags** and **keywords** only.
+
+    Same validation and pipeline as POST /generate, without entities or sources.
+    """
+    req = GenerateRequest(**body.model_dump())
+    result = await run_generation_pipeline(req)
+    return EventTermsResponse(hashtags=result.hashtags, keywords=result.keywords)
 
 
 @app.post("/create-event", response_model=CreateEventResponse)
