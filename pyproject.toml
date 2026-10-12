@@ -10,6 +10,7 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.142.2",
     "uvicorn>=0.54.0",
+    "deep-translator>=1.11.4",
 ]
 
 [project.scripts]

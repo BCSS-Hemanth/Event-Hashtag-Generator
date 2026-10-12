@@ -22,7 +22,16 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from keyword_generator_main.text_processor import process_content
+from keyword_generator_main.text_processor import (
+    description_theme_tokens,
+    process_content,
+)
+from keyword_generator_main.translator import (
+    detect_language_from_location,
+    is_target_script_text,
+    resolve_language_selection,
+    translate_phrase,
+)
 from keyword_generator_main.wigolo_client import clear_cache, search_web
 
 # Configure logging
@@ -53,6 +62,10 @@ class GenerateRequest(BaseModel):
     location: str = Field(..., description="Location of the event")
     description: str = Field(..., description="Detailed description of the event")
     include_social: bool = Field(False, description="Whether to include public social discussions from Reddit, YouTube, X")
+    languages: Optional[List[str]] = Field(
+        None,
+        description="Selected language codes (or, ta, te, kn, ml, mr, gu, bn, pa, hi) and/or 'all'",
+    )
     search_engine: Optional[str] = Field("all", description="Search engine to query: all, bing, duckduckgo, wikipedia, marginalia")
     max_keywords: Optional[int] = Field(None, description="Optional cap on keywords (None = provide all)")
     max_hashtags: Optional[int] = Field(None, description="Optional cap on hashtags (None = provide all)")
@@ -129,37 +142,91 @@ def build_search_query(event: str, location: str, description: str) -> str:
     for clause in clauses:
         words = re.findall(r"[A-Za-z0-9]+", clause)
         meaningful = [w for w in words if w.lower() not in skip]
-        if len(meaningful) < 2:
+        if not (2 <= len(meaningful) <= 8):
+            continue
+        if words and words[0].lower() in skip:
             continue
         initials = "".join(w[0].upper() for w in meaningful if w[0].isalpha())
         has_org_word = any(w.lower() in org_hint for w in meaningful)
         matches_short = initials in event_acro_tokens or any(
             initials.startswith(a) or a.startswith(initials) for a in event_acro_tokens
         )
-        if has_org_word or matches_short or (
-            event_acro_tokens and len(meaningful) >= 3
-        ):
-            primary_identity = f"\"{clause.strip()}\""
-            break
-        # If event contains a short ALL-CAPS token, prefer first multi-word description clause
-        if event_acro_tokens and len(meaningful) >= 2:
+        if has_org_word or matches_short:
             primary_identity = f"\"{clause.strip()}\""
             break
 
     desc_words = [
         w for w in re.findall(r"[A-Za-z0-9]+", cleaned_desc)
-        if w.lower() not in filler_words and len(w) > 2
+        if w.lower() not in filler_words and len(w) > 3
     ]
     # Avoid duplicating words already inside the quoted identity
     identity_tokens = {t.lower() for t in re.findall(r"[A-Za-z0-9]+", primary_identity)}
     desc_words = [w for w in desc_words if w.lower() not in identity_tokens]
-    meaningful_desc = " ".join(desc_words[:8])
+    meaningful_desc = " ".join(desc_words[:4])
 
     parts = [primary_identity, clean_event if primary_identity != clean_event else "", clean_location]
     if meaningful_desc:
         parts.append(meaningful_desc)
 
     return " ".join(p for p in parts if p).strip()
+
+
+def _description_translation_seed(description: str) -> str:
+    """Choose a short description clause that carries distinctive words."""
+    glue = {
+        "a", "an", "the", "and", "or", "as", "at", "by", "for", "from", "in",
+        "of", "on", "to", "with", "over", "about", "after", "before", "their",
+        "its", "this", "that", "which", "who", "into", "amid", "under",
+    }
+    best = ""
+    best_score = 0
+    for part in re.split(r"[,;|/]+", description or ""):
+        candidate = part.strip()
+        words = candidate.split()
+        if not (2 <= len(words) <= 6):
+            continue
+        content = [w for w in words if w.lower().strip("().") not in glue and len(w) >= 4]
+        if len(content) < 2:
+            continue
+        score = sum(len(w) for w in content)
+        if score > best_score:
+            best = candidate
+            best_score = score
+    return best
+
+
+def _translation_in_target_script(text: Optional[str], lang_info: Dict[str, Any]) -> Optional[str]:
+    """Keep a translation only when it is in the location language's script."""
+    if not text or not text.strip():
+        return None
+    script_range = lang_info.get("range")
+    if not script_range or not is_target_script_text(text, tuple(script_range)):
+        logger.info(
+            "Dropped %s translation outside the %s script: %s",
+            lang_info.get("code"),
+            lang_info.get("name"),
+            text,
+        )
+        return None
+    return text.strip()
+
+
+def _results_contain_script(
+    results: List[Dict[str, Any]],
+    script_range: Optional[tuple],
+) -> bool:
+    """True when any retrieved page text includes characters from the script range."""
+    if not results or not script_range:
+        return False
+    start, end = script_range
+    for result in results:
+        page_text = " ".join(
+            str(result.get(key) or "")
+            for key in ("title", "snippet", "content", "markdown")
+        )
+        if any(start <= ord(ch) <= end for ch in page_text if not ch.isspace()):
+            return True
+    return False
 
 
 async def run_generation_pipeline(
@@ -191,8 +258,133 @@ async def run_generation_pipeline(
             msg = "Please enter an event, location, and description."
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
-    # 1. Construct search query using Event + Location + Description
+    # Resolve selected languages (UI checklist). Location provides the primary language
+    # for defaults and fallback — it does not restrict extraction to that language alone.
+    primary_lang = detect_language_from_location(location)
+    selected_languages = resolve_language_selection(req.languages)
+    if not selected_languages and primary_lang:
+        selected_languages = [primary_lang]
+
+    # Ensure the location's primary language is always included and processed first
+    # so All/multi-select never drops primary-language terms when others have no content.
+    if primary_lang and selected_languages:
+        primary_code = primary_lang.get("code")
+        without_primary = [
+            lang for lang in selected_languages if lang.get("code") != primary_code
+        ]
+        selected_languages = [primary_lang] + without_primary
+    elif primary_lang and not selected_languages:
+        selected_languages = [primary_lang]
+
+    regional_languages: List[Dict[str, Any]] = []
+    search_language_terms: List[str] = []
+    primary_search_terms: List[str] = []
+    primary_code = (primary_lang or {}).get("code")
+
+    async def _translate_language_entry(lang_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Translate event/location (and a short description seed) for one language."""
+        if on_status:
+            try:
+                on_status(f"Translating event terms to {lang_info['name']}...")
+            except Exception:
+                pass
+        # Yield so SSE can flush the status before network I/O.
+        await asyncio.sleep(0)
+
+        translated_event: Optional[str] = None
+        translated_location: Optional[str] = None
+        translated_seeds: List[str] = []
+        desc_seed = _description_translation_seed(description)
+        try:
+            tasks = [
+                asyncio.to_thread(translate_phrase, event, lang_info["code"]),
+                asyncio.to_thread(translate_phrase, location, lang_info["code"]),
+            ]
+            if desc_seed:
+                tasks.append(
+                    asyncio.to_thread(translate_phrase, desc_seed, lang_info["code"])
+                )
+            raw_parts = await asyncio.gather(*tasks)
+            translated_event = _translation_in_target_script(raw_parts[0], lang_info)
+            translated_location = _translation_in_target_script(raw_parts[1], lang_info)
+            if desc_seed and len(raw_parts) > 2:
+                seed = _translation_in_target_script(raw_parts[2], lang_info)
+                if seed:
+                    translated_seeds.append(seed)
+        except Exception as te:
+            logger.warning(
+                "Translation for %s (%s) failed: %s",
+                lang_info.get("name"),
+                lang_info.get("code"),
+                te,
+            )
+        entry = {
+            "lang_info": lang_info,
+            "translated_event": translated_event,
+            "translated_location": translated_location,
+            "translated_seeds": translated_seeds,
+            "is_primary": bool(primary_code and lang_info.get("code") == primary_code),
+        }
+        logger.info(
+            "Language %s (%s): translated_event=%r translated_location=%r seeds=%r primary=%s",
+            lang_info.get("name"),
+            lang_info.get("code"),
+            translated_event,
+            translated_location,
+            translated_seeds,
+            entry["is_primary"],
+        )
+        return entry
+
+    # Translate the primary (location) language first so status shows
+    # "Translating event terms to Odia..." before search — not buried under All.
+    pending_languages: List[Dict[str, Any]] = []
+    if selected_languages:
+        primary_selected = [
+            lang for lang in selected_languages
+            if primary_code and lang.get("code") == primary_code
+        ]
+        if primary_selected:
+            pre_search_langs = primary_selected
+            pending_languages = [
+                lang for lang in selected_languages
+                if lang.get("code") != primary_code
+            ]
+        else:
+            # No location primary (or unmatched): translate first selected, rest later.
+            pre_search_langs = [selected_languages[0]]
+            pending_languages = list(selected_languages[1:])
+
+        for lang_info in pre_search_langs:
+            entry = await _translate_language_entry(lang_info)
+            regional_languages.append(entry)
+            loc_text = str(entry.get("translated_location") or "")
+            loc_head = re.split(r"[,;/|]", loc_text)[0].strip()
+            expand_terms = [
+                entry.get("translated_event"),
+                loc_head or None,
+            ]
+            for term in expand_terms:
+                if not term or not str(term).strip():
+                    continue
+                cleaned = str(term).strip()
+                if cleaned not in search_language_terms:
+                    search_language_terms.append(cleaned)
+                if entry.get("is_primary") and cleaned not in primary_search_terms:
+                    primary_search_terms.append(cleaned)
+
+    # 1. Construct search query using Event + Location + Description.
+    # When multiple languages are selected, expand the query with the primary
+    # language only so other-language gaps do not dilute retrieval.
     search_query = build_search_query(event, location, description)
+    query_expand_terms = (
+        primary_search_terms
+        if len(selected_languages) > 1 and primary_search_terms
+        else search_language_terms
+    )
+    if query_expand_terms:
+        # Translations expand retrieval only; keywords/hashtags stay content-backed.
+        search_query = f"{search_query} {' '.join(query_expand_terms)}".strip()
     logger.info("Initiating Wigolo search for query: '%s'", search_query)
 
     search_engines_used: List[str] = []
@@ -258,6 +450,107 @@ async def run_generation_pipeline(
             except Exception as se:
                 logger.warning("Social search query failed: %s (continuing with web results)", se)
 
+        # Theme-focused supplemental search from the user's description clauses.
+        # Only themes missing from first-pass results are used to widen retrieval.
+        theme_tokens = description_theme_tokens(description)
+        already_in_query = {
+            t.lower()
+            for t in re.findall(r"[A-Za-z0-9]+", f"{event} {location}")
+            if len(t) > 2
+        }
+        distinctive = sorted(
+            [t for t in theme_tokens if t not in already_in_query and len(t) >= 5],
+            key=len,
+            reverse=True,
+        )[:6]
+        if distinctive:
+            blob = " ".join(
+                str(r.get(k) or "")
+                for r in search_results
+                for k in ("title", "snippet", "content", "markdown")
+            ).lower()
+            missing_themes = [t for t in distinctive if t not in blob][:3]
+            if missing_themes or not search_results:
+                focus = missing_themes or distinctive[:3]
+                loc_head = re.split(r"[,;/|]", location)[0].strip()
+                theme_query = f"{event} {loc_head} {' '.join(focus)}".strip()
+                logger.info("Theme-focused supplemental search: '%s'", theme_query)
+                if on_status:
+                    try:
+                        on_status("Searching description themes...")
+                    except Exception:
+                        pass
+                try:
+                    theme_data = await search_web(
+                        theme_query,
+                        max_results=5,
+                        engines=engines_arg,
+                        on_engine_status=status_tracker,
+                    )
+                    seen_urls = {r.get("url") for r in search_results if r.get("url")}
+                    for t_res in theme_data.get("results", []):
+                        if t_res.get("url") and t_res.get("url") not in seen_urls:
+                            search_results.append(t_res)
+                            seen_urls.add(t_res.get("url"))
+                    for eng in theme_data.get("engines_used", []):
+                        formatted_eng = name_map.get(
+                            str(eng).lower(), str(eng).title()
+                        )
+                        if formatted_eng not in search_engines_used:
+                            search_engines_used.append(formatted_eng)
+                except Exception as te:
+                    logger.warning(
+                        "Theme-focused search failed: %s (continuing)", te
+                    )
+
+        # Primary-language fallback retrieval: when All/multi-select yields no content
+        # in the location's primary script, run a focused primary-language search so
+        # Odia (etc.) terms are still available instead of empty regional results.
+        if primary_lang and primary_search_terms:
+            primary_range = primary_lang.get("range")
+            if primary_range and not _results_contain_script(
+                search_results, tuple(primary_range)
+            ):
+                base_query = build_search_query(event, location, description)
+                primary_query = f"{base_query} {' '.join(primary_search_terms)}".strip()
+                if primary_query != search_query:
+                    logger.info(
+                        "Primary-language fallback search (%s): '%s'",
+                        primary_lang.get("name"),
+                        primary_query,
+                    )
+                    if on_status:
+                        try:
+                            on_status(
+                                f"Searching {primary_lang.get('name')} content..."
+                            )
+                        except Exception:
+                            pass
+                    try:
+                        primary_data = await search_web(
+                            primary_query,
+                            max_results=5,
+                            engines=engines_arg,
+                            on_engine_status=status_tracker,
+                        )
+                        seen_urls = {
+                            r.get("url") for r in search_results if r.get("url")
+                        }
+                        for p_res in primary_data.get("results", []):
+                            if p_res.get("url") and p_res.get("url") not in seen_urls:
+                                search_results.append(p_res)
+                                seen_urls.add(p_res.get("url"))
+                        for eng in primary_data.get("engines_used", []):
+                            formatted_eng = name_map.get(
+                                str(eng).lower(), str(eng).title()
+                            )
+                            if formatted_eng not in search_engines_used:
+                                search_engines_used.append(formatted_eng)
+                    except Exception as pe:
+                        logger.warning(
+                            "Primary-language fallback search failed: %s", pe
+                        )
+
         # Ensure search_engines_used includes the requested engine if specified
         if engines_arg and not search_engines_used:
             search_engines_used.append(name_map.get(engines_arg, engines_arg.title()))
@@ -271,6 +564,12 @@ async def run_generation_pipeline(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Wigolo search retrieval encountered an error: {err_msg}",
         )
+
+    # Translate remaining selected languages after search (All / multi-select).
+    # Primary was already translated above so Odia status appears before Bing/etc.
+    for lang_info in pending_languages:
+        entry = await _translate_language_entry(lang_info)
+        regional_languages.append(entry)
 
     # 3. Process search results using deterministic Python text processing
     if on_status:
@@ -287,6 +586,7 @@ async def run_generation_pipeline(
             search_results=search_results,
             max_keywords=req.max_keywords,
             max_hashtags=req.max_hashtags,
+            regional_languages=regional_languages or None,
         )
     except Exception as e:
         logger.error("Text processing failed: %s", e)

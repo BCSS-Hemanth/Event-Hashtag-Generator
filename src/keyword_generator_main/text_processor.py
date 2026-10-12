@@ -18,11 +18,17 @@ import difflib
 import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 from keyword_generator_main.content_cleaner import (
     deduplicate_syndicated_passages,
     extract_clean_passages,
     is_boilerplate_sentence,
+)
+from keyword_generator_main.translator import (
+    format_indic_hashtag,
+    is_indic_text,
+    is_target_script_text,
 )
 
 
@@ -71,8 +77,118 @@ COMMON_FINITE_VERBS: Set[str] = {
     "provides", "offers", "launches", "strives", "empowers", "encourages",
     "implements", "participates", "addresses", "serves", "claims", "says",
     "gain", "offer", "participate", "conduct", "ensure", "strive", "gather",
-    "covering", "protest", "protests", "meeting"
+    "covering", "protest", "protests", "meeting",
+    "resign", "resigns", "resigned", "resigning",
 }
+
+# High-frequency grammatical stopwords and social noise across Indian languages.
+# Used only when merging regional-language terms; English stopword checks are unchanged.
+INDIC_STOP_WORDS: Set[str] = {
+    # Hindi / Marathi
+    "का", "के", "की", "में", "और", "है", "हैं", "से", "पर", "को", "भी", "ने", "या", "था", "थी", "थे", "होता", "होती",
+    "वीडियो", "चैनल", "सब्सक्राइब", "देखिए", "महीने", "पहले", "साल", "स्वागत", "असली", "लाइक", "शेयर", "खबर", "दिन", "आज", "कल", "दल",
+    "लेकर", "हुए", "हुआ", "हुई", "दिया", "दिए", "दी", "होने", "नया", "नयी", "नए",
+    # Odia
+    "ଏବଂ", "ଓ", "ର", "ରେ", "ପାଇଁ", "ଏହା", "ହେଉଛି", "ଏକ", "ମଧ୍ୟ", "କିନ୍ତୁ", "ତଥା", "ସହିତ", "ଦ୍ୱାରା", "କରି", "ହୋଇ",
+    "ଭିଡିଓ", "ଭିଡ଼ିଓ", "ଚ୍ୟାନେଲ୍", "ଚ୍ୟାନେଲ", "ସବସ୍କ୍ରାଇବ", "ସ୍ୱାଗତ", "ଦେଖନ୍ତୁ", "ଲାଇକ", "ଶେୟାର", "ମାସ", "ପୂର୍ବରୁ",
+    "ଦିନ", "ବର୍ଷ", "ଦଳର", "ଦଳ", "ଅସଲ", "ଚେହେରା", "କୁ", "କୁ।ଏହା", "ଅସରପା", "ଖବର", "ନିୟମ", "ଆଜି", "କାଲି", "ଘଟଣା",
+    # Bengali
+    "এবং", "ও", "এর", "তে", "জন্য", "একটি", "বা", "কিন্তু", "সহ", "দ্বারা", "হলো", "হচ্ছে", "ভিডিও", "চ্যানেল",
+    "সাবস্ক্রাইব", "লাইক", "শেয়ার", "মাস", "আগে", "বছর", "স্বাগত", "খবর", "দিন", "আজ",
+    # Tamil
+    "மற்றும்", "ஒரு", "இல்", "உடன்", "ஆகிய", "என்று", "இந்த", "அந்த", "உள்ளது", "வீடியோ", "சேனல்",
+    "சப்ஸ்கிரைப்", "லைக்", "ஷேர்", "மாதம்", "முன்பு", "ஆண்டு", "செய்திகள்",
+    # Telugu
+    "మరియు", "యొక్క", "లో", "తో", "ఒక", "కోసం", "అని", "ఈ", "ఆ", "ఉంది", "వీడియో", "ఛానల్",
+    "సబ్‌స్క్రైబ్", "లైక్", "షేర్", "నెల", "క్రితం", "సంవత్సరం", "వార్తలు",
+    # Kannada
+    "ಮತ್ತು", "ಒಂದು", "ರಲ್ಲಿ", "ಜೊತೆಗೆ", "ಎಂದು", "ಈ", "ಆ", "ವೀಡಿಯೊ", "ಚಾನೆಲ್", "ಸಬ್‌ಸ್ಕ್ರೈಬ್", "ಲೈಕ್", "ಷೇರ್", "ತಿಂಗಳ", "ಹಿಂದೆ", "ವರ್ಷ", "ಸುದ್ದಿ",
+    # Malayalam
+    "കൂടാതെ", "ഒരു", "എന്നിവ", "ഉള്ള", "എന്ന്", "ഈ", "ആ", "വീഡിയോ", "ചാനൽ", "സബ്സ്ക്രൈബ്", "ലൈക്ക്", "ഷെയർ", "മാസം", "മുമ്പ്", "വർഷം", "വാർത്തകൾ",
+    # Gujarati
+    "અને", "એક", "માં", "સાથે", "છે", "પણ", "તો", "વિડિઓ", "ચેનલ", "સબ્સ્ક્રાઇબ", "લાઈક", "શેર", "મહિના", "પહેલાં", "વર્ષ", "સમાચાર",
+    "નિયામક", "ખાતાની", "સમાજના", "નબળા", "વર્ગો", "જેવા", "અનાથ", "તરફ", "વળેલા", "બાળકો", "તેમજ", "યુવાન",
+    # Punjabi
+    "ਅਤੇ", "ਇੱਕ", "ਵਿੱਚ", "ਨਾਲ", "ਹੈ", "ਹਨ", "ਸੀ", "ਵੀਡੀਓ", "ਚੈਨਲ", "ਸਬਸਕ੍ਰਾਈਬ", "ਲਾਇਕ", "ਸ਼ੇਅਰ", "ਮਹੀਨੇ", "ਪਹਿਲਾਂ", "ਸਾਲ", "ਖ਼ਬਰਾਂ",
+}
+
+
+# Linguistic role markers used to find people in Indic text (not entity names).
+# Mirrors English title/role cues such as minister / activist / leader.
+INDIC_ROLE_MARKERS: Set[str] = {
+    # Hindi / Marathi
+    "\u092e\u0902\u0924\u094d\u0930\u0940", "\u0928\u0947\u0924\u093e", "\u0928\u0947\u0924\u094d\u0930\u0940",
+    "\u0915\u093e\u0930\u094d\u092f\u0915\u0930\u094d\u0924\u093e", "\u0905\u0927\u094d\u092f\u0915\u094d\u0937",
+    "\u0938\u091a\u093f\u0935", "\u0938\u0902\u092f\u094b\u091c\u0915", "\u092a\u094d\u0930\u0927\u093e\u0928",
+    # Odia
+    "\u0b2e\u0b28\u0b4d\u0b24\u0b4d\u0b30\u0b40", "\u0b28\u0b47\u0b24\u0b3e", "\u0b28\u0b47\u0b24\u0b4d\u0b30\u0b40",
+    "\u0b15\u0b3e\u0b30\u0b4d\u0b5f\u0b4d\u0b5f\u0b15\u0b30\u0b4d\u0b24\u0b4d\u0b24\u0b3e", "\u0b05\u0b27\u0b4d\u0b5f\u0b15\u0b4d\u0b37",
+    "\u0b38\u0b1a\u0b3f\u0b2c", "\u0b38\u0b02\u0b5f\u0b4b\u0b1c\u0b15",
+    # Bengali
+    "\u09ae\u09a8\u09cd\u09a4\u09cd\u09b0\u09c0", "\u09a8\u09c7\u09a4\u09be", "\u09a8\u09c7\u09a4\u09cd\u09b0\u09c0",
+    "\u0995\u09b0\u09cd\u09ae\u09c0", "\u09b8\u09ad\u09be\u09aa\u09a4\u09bf", "\u09b8\u09ae\u09cd\u09aa\u09be\u09a6\u0995",
+    # Tamil
+    "\u0b85\u0bae\u0bc8\u0b9a\u0bcd\u0b9a\u0bb0\u0bcd", "\u0ba4\u0bb2\u0bc8\u0bb5\u0bb0\u0bcd",
+    "\u0b9a\u0bc6\u0baf\u0bb2\u0bbe\u0bb3\u0bb0\u0bcd", "\u0b86\u0bb0\u0bcd\u0bb5\u0bb2\u0bb0\u0bcd",
+    # Telugu
+    "\u0c2e\u0c02\u0c24\u0c4d\u0c30\u0c3f", "\u0c28\u0c47\u0c24", "\u0c15\u0c3e\u0c30\u0c4d\u0c2f\u0c15\u0c30\u0c4d\u0c24",
+    "\u0c05\u0c27\u0c4d\u0c2f\u0c15\u0c4d\u0c37\u0c41\u0c21\u0c41", "\u0c15\u0c3e\u0c30\u0c4d\u0c2f\u0c26\u0c30\u0c4d\u0c36\u0c3f",
+    # Kannada
+    "\u0cb8\u0c9a\u0cbf\u0cb5", "\u0ca8\u0cbe\u0caf\u0c95", "\u0c95\u0cbe\u0cb0\u0ccd\u0caf\u0c95\u0cb0\u0ccd\u0ca4",
+    "\u0c85\u0ca7\u0ccd\u0caf\u0c95\u0ccd\u0cb7",
+    # Malayalam
+    "\u0d2e\u0d28\u0d4d\u0d24\u0d4d\u0d30\u0d3f", "\u0d28\u0d47\u0d24\u0d3e\u0d35\u0d4d",
+    "\u0d2a\u0d4d\u0d30\u0d35\u0d7c\u0d24\u0d4d\u0d24\u0d15\u0d7b", "\u0d05\u0d27\u0d4d\u0d2f\u0d15\u0d4d\u0d37\u0d7b",
+    # Gujarati
+    "\u0aae\u0a82\u0aa4\u0acd\u0ab0\u0ac0", "\u0aa8\u0ac7\u0aa4\u0abe", "\u0a95\u0abe\u0ab0\u0acd\u0aaf\u0a95\u0ab0\u0acd\u0aa4\u0abe",
+    "\u0a85\u0aa7\u0acd\u0aaf\u0a95\u0acd\u0ab7",
+    # Punjabi
+    "\u0a2e\u0a70\u0a24\u0a30\u0a40", "\u0a28\u0a47\u0a24\u0a3e", "\u0a15\u0a3e\u0a30\u0a15\u0a41\u0a28", "\u0a2a\u0a4d\u0a30\u0a27\u0a3e\u0a28",
+}
+
+# Linguistic campaign / event markers in Indic scripts (not specific event titles).
+INDIC_CAMPAIGN_MARKERS: Set[str] = {
+    # Hindi / Marathi
+    "\u0905\u092d\u093f\u092f\u093e\u0928", "\u0906\u0902\u0926\u094b\u0932\u0928", "\u0930\u0948\u0932\u0940",
+    "\u092a\u094d\u0930\u0926\u0930\u094d\u0936\u0928", "\u092f\u093e\u0924\u094d\u0930\u093e", "\u0938\u092e\u093e\u0930\u094b\u0939",
+    "\u0909\u0924\u094d\u0938\u0935",
+    # Odia
+    "\u0b05\u0b2d\u0b3f\u0b5f\u0b3e\u0b28", "\u0b06\u0b28\u0b4d\u0b26\u0b4b\u0b33\u0b28", "\u0b30\u0b47\u0b32\u0b3f",
+    "\u0b2a\u0b4d\u0b30\u0b26\u0b30\u0b4d\u0b36\u0b28", "\u0b5f\u0b3e\u0b24\u0b4d\u0b30\u0b3e", "\u0b09\u0b24\u0b4d\u0b38\u0b2c",
+    "\u0b15\u0b3e\u0b30\u0b4d\u0b5f\u0b4d\u0b5f\u0b15\u0b33\u0b3e\u0b2a",
+    # Bengali
+    "\u0985\u09ad\u09bf\u09af\u09bc\u09be\u09a8", "\u0986\u09a8\u09cd\u09a6\u09cb\u09b2\u09a8", "\u09b8\u09ae\u09be\u09ac\u09c7\u09b6",
+    "\u09af\u09be\u09a4\u09cd\u09b0\u09be", "\u0989\u09ce\u09b8\u09ac",
+    # Tamil
+    "\u0b87\u0baf\u0b95\u0bcd\u0b95\u0bae\u0bcd", "\u0baa\u0bcb\u0bb0\u0bbe\u0b9f\u0bcd\u0b9f\u0bae\u0bcd",
+    "\u0baa\u0bc7\u0bb0\u0ba3\u0bbf", "\u0bb5\u0bbf\u0bb4\u0bbe",
+    # Telugu
+    "\u0c09\u0c26\u0c4d\u0c2f\u0c2e\u0c02", "\u0c06\u0c02\u0c26\u0c4b\u0c33\u0c28", "\u0c30\u0c4d\u0c2f\u0c3e\u0c32\u0c40",
+    "\u0c2f\u0c3e\u0c24\u0c4d\u0c30", "\u0c09\u0c24\u0c4d\u0c38\u0c35\u0c02",
+    # Kannada
+    "\u0c9a\u0cb3\u0cc1\u0cb5\u0cb3\u0cbf", "\u0c86\u0c82\u0ca6\u0ccb\u0cb2\u0ca8", "\u0cb0\u0ccd\u0caf\u0cbe\u0cb2\u0cbf",
+    "\u0caf\u0cbe\u0ca4\u0ccd\u0cb0\u0cc6", "\u0c89\u0ca4\u0ccd\u0cb8\u0cb5",
+    # Malayalam
+    "\u0d2a\u0d4d\u0d30\u0d1a\u0d3e\u0d30\u0d23\u0d02", "\u0d38\u0d2e\u0d30\u0d02", "\u0d31\u0d3e\u0d32\u0d3f",
+    "\u0d2f\u0d3e\u0d24\u0d4d\u0d30", "\u0d09\u0d24\u0d4d\u0d38\u0d35\u0d02",
+    # Gujarati
+    "\u0a85\u0aad\u0abf\u0aaf\u0abe\u0aa8", "\u0a86\u0a82\u0aa6\u0acb\u0ab2\u0aa8", "\u0ab0\u0ac7\u0ab2\u0ac0",
+    "\u0aaf\u0abe\u0aa4\u0acd\u0ab0\u0abe", "\u0a89\u0aa4\u0acd\u0ab8\u0ab5",
+    # Punjabi
+    "\u0a2e\u0a41\u0a39\u0a3f\u0a70\u0a2e", "\u0a05\u0a70\u0a26\u0a4b\u0a32\u0a28", "\u0a30\u0a48\u0a32\u0a40",
+    "\u0a2f\u0a3e\u0a24\u0a30\u0a3e", "\u0a24\u0a3f\u0a09\u0a39\u0a3e\u0a30",
+}
+
+# English grammar cues that often appear in bilingual Indian news copy
+ENGLISH_ROLE_CUES_IN_SENTENCE: Tuple[str, ...] = (
+    "minister", "activist", "leader", "convenor", "convener", "president",
+    "secretary", "organiser", "organizer", "founder", "spokesperson",
+    "led by", "headed by", "chaired by",
+)
+ENGLISH_CAMPAIGN_CUES_IN_SENTENCE: Tuple[str, ...] = (
+    "campaign", "movement", "protest", "rally", "agitation", "yatra",
+    "stir", "demonstration", "drive", "initiative",
+)
 
 # Words indicating organization, group, or institution
 ORGANIZATION_INDICATORS: Set[str] = {
@@ -102,6 +218,24 @@ TITLES_AND_ROLES: Set[str] = {
     "activist", "spokesperson", "spokesman", "chief", "chairperson", "advocate"
 }
 
+GENERIC_LOCATION_TOKENS: Set[str] = {
+    "india", "state", "city", "district", "road", "street", "police", "news",
+    "today", "area", "hall", "centre", "center", "board", "circle", "square",
+    "complex", "campus", "location",
+}
+
+GENERIC_EVENT_TOKENS: Set[str] = {
+    "day", "days", "date", "dates", "year", "years", "month", "months",
+    "today", "yesterday", "tomorrow", "annual", "daily", "weekly",
+    "event", "events", "celebration", "celebrations", "activity", "activities",
+    "update", "updates", "news", "information", "discussion", "discussions",
+}
+
+SOCIAL_DOMAINS: Set[str] = {
+    "x.com", "twitter.com", "youtube.com", "youtu.be",
+    "reddit.com", "instagram.com", "facebook.com", "tiktok.com",
+}
+
 # Headline tails glued onto person names ("Revanth Reddy Speech" / "… Full")
 PERSON_NAME_TRAILING_NOISE: Set[str] = {
     "speech", "full", "live", "video", "interview", "address", "talk", "talks",
@@ -110,6 +244,20 @@ PERSON_NAME_TRAILING_NOISE: Set[str] = {
     "participates", "participation", "honble", "honourable", "honorable",
     "sri", "ji", "garu", "audio", "photos", "photo", "gallery", "clip",
     "statement", "remarks", "message", "special", "exclusive",
+    # Headline action tails glued onto person names
+    "resign", "resigns", "resigned", "resigning", "resignation",
+    "demand", "demands", "protest", "protests", "arrest", "arrested",
+}
+
+# Abstract / headline-noun scraps — reject-only filters (never injected into output)
+HEADLINE_ABSTRACT_WORDS: Set[str] = {
+    "leadership", "change", "changes", "detention", "detentions",
+    "tension", "tensions", "crackdown", "lockdown", "curb", "curbs",
+    "development", "developments", "fairness", "debate", "rising", "falling",
+    "mass", "nationwide", "opposition", "activist", "activists",
+    "youtuber", "youtubers", "capital", "update", "updates", "latest",
+    "breaking", "coverage", "report", "reports", "analysis", "explainer",
+    "highlights", "roundup", "timeline", "liveblog", "recap",
 }
 
 # Substantive non-person concept words that should not be misclassified as individuals
@@ -129,8 +277,11 @@ NON_PERSON_WORDS: Set[str] = {
     "trust", "foundation", "society", "association", "convention", "auditorium",
     "stadium", "hall", "road", "street", "lane", "hills", "valley", "nagar",
     "sector", "chhatra", "yuva", "facts", "fact", "movement", "movements",
-    "curriculum", "textbook", "textbooks", "history", "education", "school"
-}
+    "curriculum", "textbook", "textbooks", "history", "education", "school",
+    # Common non-surname English words that appear in outlet/product labels
+    "story", "stories", "channel", "tv", "news", "media", "times", "today",
+    "network", "live", "podcast", "youtube", "webcast",
+} | HEADLINE_ABSTRACT_WORDS
 
 # Known collision or satire terms to discard unless user explicitly provided them
 KNOWN_COLLISION_PATTERNS: List[str] = [
@@ -150,6 +301,19 @@ FRAGMENT_TAIL_WORDS: Set[str] = {
     "official", "officials", "withdraws", "launches", "announces",
     "holding", "warning", "latest", "update", "updates", "combined",
     "controversy", "erupted", "want", "wants", "erupts", "says", "said",
+}
+
+# Function words that leave a phrase unfinished when they sit on either edge.
+EDGE_FUNCTION_WORDS: Set[str] = {
+    "a", "an", "the", "and", "or", "as", "at", "by", "for", "from", "in", "into",
+    "of", "on", "to", "with", "over", "amid", "along", "across", "including",
+    "regarding", "concerning", "about", "after", "before", "during", "while",
+    "when", "where", "which", "who", "whose", "whom", "their", "its", "this",
+    "that", "these", "those", "than", "via", "per",
+}
+
+WEEKDAY_WORDS: Set[str] = {
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
 }
 
 # Generic web-chrome phrases (not event-specific)
@@ -191,8 +355,8 @@ CLICKBAIT_TOKENS: Set[str] = {
     "tension", "erupted", "clash", "clashes", "fury", "storm",
 }
 
-# Lone tokens that are never useful as keywords/hashtags on their own
-# (only full phrases like "Cockroach Janta Party" or "Chief Election Commissioner")
+# Lone org/role glue tokens that are never useful as keywords/hashtags alone
+# (full multi-word entities from retrieved content are kept instead)
 ENTITY_GLUE_SINGLETONS: Set[str] = {
     "party", "janata", "janta", "commission", "commissioner", "committee",
     "association", "union", "society", "foundation", "trust", "organization",
@@ -523,12 +687,44 @@ def is_marketing_or_listicle_scrap(phrase: str) -> bool:
     return False
 
 
+def _phrase_word_list(phrase: str) -> List[str]:
+    """Tokenize a phrase or CamelCase hashtag body into lowercase words."""
+    if not phrase:
+        return []
+    body = phrase.lstrip("#").strip()
+    if re.search(r"[a-z][A-Z]", body):
+        parts = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|[0-9]+", body)
+        return [p.lower() for p in parts if p]
+    return [w.lower() for w in re.findall(r"[A-Za-z0-9]+", body)]
+
+
+def is_abstract_headline_phrase(phrase: str) -> bool:
+    """Reject Title-Case headline concepts that are not people or event names."""
+    words = _phrase_word_list(phrase)
+    if not words or len(words) > 5:
+        return False
+    weak = (
+        HEADLINE_ABSTRACT_WORDS
+        | STOP_WORDS
+        | GENERIC_THEME_TOKENS
+        | MARKETING_OPENERS
+        | CLICKBAIT_TOKENS
+    )
+    if all(w in weak for w in words):
+        return True
+    if len(words) == 2 and words[0] in HEADLINE_ABSTRACT_WORDS and words[1] in HEADLINE_ABSTRACT_WORDS:
+        return True
+    return False
+
+
 def is_clickbait_headline_scrap(phrase: str) -> bool:
     """Reject sensational headline scraps: Meat Allegedly Thrown, Roadside Drama Exposed."""
     if not phrase:
         return True
-    words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", phrase)]
+    words = _phrase_word_list(phrase)
     if not words:
+        return True
+    if is_abstract_headline_phrase(phrase):
         return True
     if any(w in CLICKBAIT_TOKENS for w in words):
         return True
@@ -558,6 +754,10 @@ def is_incomplete_fragment(phrase: str) -> bool:
         return True
     last = words[-1].lower()
     first = words[0].lower()
+    if first in EDGE_FUNCTION_WORDS or last in EDGE_FUNCTION_WORDS:
+        return True
+    if first in WEEKDAY_WORDS or last in WEEKDAY_WORDS:
+        return True
     if last in FRAGMENT_TAIL_WORDS or last in COMMON_FINITE_VERBS:
         return True
     if first in COMMON_FINITE_VERBS:
@@ -577,6 +777,37 @@ def is_incomplete_fragment(phrase: str) -> bool:
     return False
 
 
+def description_theme_tokens(description: str) -> List[str]:
+    """
+    Distinctive theme tokens from the user's description clauses.
+    Used to drive theme-focused search and content-backed keyword admission.
+    No event-specific hardcoding — derived only from user text.
+    """
+    weak = (
+        STOP_WORDS
+        | GENERIC_THEME_TOKENS
+        | GENERIC_LOCATION_TOKENS
+        | COMMON_FINITE_VERBS
+        | MARKETING_OPENERS
+        | HEADLINE_ABSTRACT_WORDS
+    )
+    # Too broad alone to steer retrieval (still usable if found with event context)
+    ultra_generic = {
+        "events", "event", "party", "parties", "thing", "things", "issue", "issues",
+        "news", "update", "updates", "today", "people", "public",
+    }
+    ordered: List[str] = []
+    seen: Set[str] = set()
+    for clause in re.split(r"[,;/|]+", description or ""):
+        for tok in tokenize(clause):
+            t = tok.lower().strip()
+            if len(t) < 4 or t in weak or t in ultra_generic or t in seen:
+                continue
+            seen.add(t)
+            ordered.append(t)
+    return ordered
+
+
 def has_distinctive_event_signal(phrase: str, anchor: Dict[str, Any]) -> bool:
     """True if phrase shares a non-generic token with the user's event/location/description."""
     p_toks = set(tokenize(phrase)) - STOP_WORDS - GENERIC_THEME_TOKENS - GENERIC_LOCATION_TOKENS
@@ -584,16 +815,12 @@ def has_distinctive_event_signal(phrase: str, anchor: Dict[str, Any]) -> bool:
         return False
     event_toks = set(tokenize(anchor.get("event", ""))) - STOP_WORDS - GENERIC_THEME_TOKENS
     loc_toks = set(tokenize(anchor.get("location", ""))) - STOP_WORDS - GENERIC_THEME_TOKENS - GENERIC_LOCATION_TOKENS
-    desc_toks = set(tokenize(anchor.get("description", ""))) - STOP_WORDS - GENERIC_THEME_TOKENS
-    # Prefer proper event/location anchors; allow distinctive desc tokens (len>=5) only with 2 hits
-    if p_toks & event_toks:
-        return True
-    if p_toks & loc_toks:
-        return True
-    desc_hit = p_toks & desc_toks
-    if len(desc_hit) >= 2:
-        return True
-    if any(len(t) >= 6 for t in desc_hit):
+    desc_toks = set(description_theme_tokens(anchor.get("description", "")))
+    desc_toks |= set(tokenize(anchor.get("description", ""))) - STOP_WORDS - GENERIC_THEME_TOKENS
+    user_toks = event_toks | loc_toks | desc_toks
+    # Keep a phrase only when its content words all come from the user's text.
+    # One shared word is not enough to admit a sentence scrap around it.
+    if p_toks and p_toks <= user_toks:
         return True
     # User-stated acronyms
     for pair in anchor.get("acronym_pairs") or []:
@@ -601,9 +828,68 @@ def has_distinctive_event_signal(phrase: str, anchor: Dict[str, Any]) -> bool:
         full_toks = set(tokenize(pair.get("full") or "")) - STOP_WORDS
         if short and short in {t.lower() for t in tokenize(phrase)}:
             return True
-        if full_toks and (full_toks & p_toks):
+        if full_toks and p_toks <= full_toks:
             return True
     return False
+
+
+def extract_theme_backed_phrases(
+    corpus: str,
+    themes: List[str],
+    *,
+    limit: int = 12,
+) -> List[str]:
+    """
+    Pull short phrases from retrieved text that contain the user's description
+    theme tokens (content-backed only — themes must appear in the corpus).
+    """
+    if not corpus or not themes:
+        return []
+    text = corpus
+    lower = text.lower()
+    found: List[str] = []
+    seen: Set[str] = set()
+    # Prefer multi-word windows around each theme mention
+    for theme in themes:
+        if theme not in lower:
+            continue
+        # Capture 0-2 words before theme + theme + 0-2 words after
+        window = re.compile(
+            rf"\b((?:[A-Za-z][A-Za-z0-9']{{1,20}}\s+){{0,2}}"
+            rf"{re.escape(theme)}"
+            rf"(?:\s+[A-Za-z][A-Za-z0-9']{{1,20}}){{0,2}})\b",
+            re.I,
+        )
+        for m in window.finditer(text):
+            phrase = re.sub(r"\s+", " ", m.group(1)).strip(" .,;:-")
+            words = phrase.split()
+            edge_words = EDGE_FUNCTION_WORDS | STOP_WORDS
+            while words and words[0].lower() in edge_words:
+                words = words[1:]
+            while words and words[-1].lower() in edge_words:
+                words = words[:-1]
+            phrase = " ".join(words)
+            if not (1 <= len(words) <= 5):
+                continue
+            if is_incomplete_fragment(phrase) or is_abstract_headline_phrase(phrase):
+                continue
+            if is_web_boilerplate(phrase) or is_marketing_or_listicle_scrap(phrase):
+                continue
+            norm = normalize_term(phrase)
+            if not norm or norm in seen or norm in STOP_WORDS:
+                continue
+            seen.add(norm)
+            # Keep original casing for multi-word; lowercase single theme token
+            found.append(phrase if len(words) > 1 else theme)
+            if len(found) >= limit:
+                return found
+        # Theme alone when present in content
+        if theme not in seen:
+            seen.add(theme)
+            found.append(theme)
+            if len(found) >= limit:
+                return found
+    return found
 
 
 def detect_user_state(user_location: str) -> str:
@@ -714,7 +1000,7 @@ def extract_user_seed_facts(
         "activity", "campaign", "movement", "meeting", "conference",
         "minister", "secretary", "president", "director", "convenor",
         "convener", "leader", "official", "party", "union", "forum",
-    } | TITLES_AND_ROLES | ORGANIZATION_INDICATORS | LOCATION_INDICATORS | NON_PERSON_WORDS
+    } | TITLES_AND_ROLES | ORGANIZATION_INDICATORS | LOCATION_INDICATORS | NON_PERSON_WORDS | GENERIC_EVENT_TOKENS
     for m in re.finditer(r"\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b", event):
         cand = f"{m.group(1)} {m.group(2)}"
         words = {w.lower() for w in cand.split()}
@@ -766,11 +1052,31 @@ def extract_user_seed_facts(
     }
 
 
-GENERIC_LOCATION_TOKENS: Set[str] = {
-    "india", "state", "city", "district", "road", "street", "police", "news",
-    "today", "area", "hall", "centre", "center", "board", "circle", "square",
-    "complex", "campus", "location",
-}
+
+
+
+def extract_source_domain(url: str) -> str:
+    """Extract clean domain from URL, canonicalizing mirrors."""
+    if not url:
+        return ""
+    try:
+        netloc = urlparse(url).netloc.lower()
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        if netloc in {"twitter.com", "x.com"}:
+            return "x.com"
+        if netloc in {"youtu.be", "youtube.com"}:
+            return "youtube.com"
+        return netloc
+    except Exception:
+        return ""
+
+
+def is_social_domain(domain: str) -> bool:
+    """Check if domain belongs to public social media / UGC platforms."""
+    if not domain:
+        return False
+    return any(s in domain for s in SOCIAL_DOMAINS)
 
 
 def _norm_key(term: str) -> str:
@@ -836,15 +1142,22 @@ def is_strongly_event_relevant(phrase: str, anchor: Dict[str, Any]) -> bool:
         return bool(re.fullmatch(r"[a-z]{2,6}", phrase_key or ""))
 
     event_tokens = set(tokenize(anchor.get("event", ""))) - STOP_WORDS - GENERIC_LOCATION_TOKENS
-    desc_tokens = set(tokenize(anchor.get("description", ""))) - STOP_WORDS - GENERIC_LOCATION_TOKENS
+    distinctive_event = {
+        t for t in event_tokens
+        if not t.isdigit() and t not in GENERIC_EVENT_TOKENS and len(t) >= 3
+    }
+    desc_tokens = set(description_theme_tokens(anchor.get("description", "")))
+    desc_tokens |= set(tokenize(anchor.get("description", ""))) - STOP_WORDS - GENERIC_LOCATION_TOKENS
 
-    if p_tokens & event_tokens:
+    if distinctive_event and (p_tokens & distinctive_event):
         return True
-    # Need at least 2 description tokens, or 1 distinctive desc token (len>=5)
+    if len(p_tokens & event_tokens) >= 2:
+        return True
+    # Need at least 2 description tokens, or 1 distinctive theme token (len>=4)
     desc_hit = p_tokens & desc_tokens
     if len(desc_hit) >= 2:
         return True
-    if any(len(t) >= 5 for t in desc_hit):
+    if any(len(t) >= 4 and not t.isdigit() for t in desc_hit):
         return True
     return False
 
@@ -915,12 +1228,17 @@ def is_content_relevant(text: str, anchor: Dict[str, Any]) -> bool:
     # Discard obvious off-topic commercial / spam pages
     if any(bp in t_lower for bp in [
         "insurance quotes", "business insurance", "hockey association",
-        "sports betting", "casino", "credit card", "personal loan"
+        "sports betting", "casino", "credit card", "personal loan",
+        "lottery sambad", "dear lottery", "satta matka", "lucky draw",
     ]):
         return False
 
     t_tokens = set(tokenize(t_lower))
     event_tokens = set(tokenize(anchor.get("event", ""))) - STOP_WORDS - GENERIC_LOCATION_TOKENS
+    distinctive_event_tokens = {
+        t for t in event_tokens
+        if not t.isdigit() and t not in GENERIC_EVENT_TOKENS and len(t) >= 3
+    }
     desc_tokens = set(tokenize(anchor.get("description", ""))) - STOP_WORDS - GENERIC_LOCATION_TOKENS
     loc_tokens = set(tokenize(anchor.get("location", ""))) - STOP_WORDS - GENERIC_LOCATION_TOKENS
     anchor_tokens = anchor.get("tokens", set())
@@ -933,6 +1251,13 @@ def is_content_relevant(text: str, anchor: Dict[str, Any]) -> bool:
 
     # Strong path: event tokens present
     event_hit = t_tokens.intersection(event_tokens)
+    # Require distinctive event token match (do not qualify solely on year numbers or calendar words)
+    if distinctive_event_tokens:
+        if not (t_tokens & distinctive_event_tokens):
+            event_hit = set()
+    elif len(event_hit) < 2:
+        event_hit = set()
+
     desc_hit = t_tokens.intersection(desc_tokens)
     loc_hit = t_tokens.intersection(loc_tokens)
 
@@ -1071,14 +1396,29 @@ def is_valid_hashtag(tag: str, anchor: Dict[str, Any]) -> bool:
         if col.replace(" ", "") in body_lower and col not in user_lower:
             return False
 
-    # Disallow month noise suffixes (#JudicialPerformanceSep -> Sep)
-    for month in ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]:
-        if body_lower.endswith(month) and len(body_lower) > len(month) + 2:
-            return False
+    words = _phrase_word_list(body)
+
+    # Disallow month noise as a distinct CamelCase token (#JudicialPerformanceSep)
+    # — not a raw suffix (avoids false-rejecting surnames that end with month letters).
+    month_tokens = {
+        "jan", "feb", "mar", "apr", "may", "jun",
+        "jul", "aug", "sep", "oct", "nov", "dec",
+    }
+    if len(words) >= 2 and words[-1] in month_tokens:
+        return False
 
     # Disallow imperative action verb prefixes (#AddressOdishaEducation)
     for prefix in ["address", "join", "joins", "support", "demand", "demands", "meet", "report"]:
         if body_lower.startswith(prefix) and len(body_lower) > len(prefix) + 2:
+            return False
+
+    # Disallow abstract headline concepts
+    if is_abstract_headline_phrase(body) or is_clickbait_headline_scrap(body):
+        return False
+
+    # Disallow action-glued name hashtags unless the user typed that action word
+    if words and words[-1] in PERSON_NAME_TRAILING_NOISE | COMMON_FINITE_VERBS:
+        if words[-1] not in user_lower.split():
             return False
 
     # Disallow web boilerplate and commercial spam
@@ -1106,7 +1446,7 @@ def phrase_tokens(phrase: str) -> List[str]:
     if not phrase:
         return []
     body = phrase.lstrip("#").strip()
-    # Split CamelCase / acronym boundaries: GyaneshKumar -> Gyanesh Kumar, SIRMaharashtra -> SIR Maharashtra
+    # Split CamelCase / acronym boundaries for token matching
     body = re.sub(r"([a-z])([A-Z])", r"\1 \2", body)
     body = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", body)
     return [t for t in normalize_term(body).split() if t]
@@ -1133,6 +1473,117 @@ def is_subphrase_of(shorter: str, longer: str) -> bool:
     return set(a).issubset(set(b))
 
 
+def is_phrase_in_user_input(phrase: str, anchor: Dict[str, Any]) -> bool:
+    """True if phrase or its primary tokens explicitly appeared in user event/location/desc."""
+    if not phrase or not anchor:
+        return False
+    p_norm = normalize_term(phrase)
+    if not p_norm:
+        return False
+    full_user = normalize_term(
+        f"{anchor.get('event', '')} {anchor.get('location', '')} {anchor.get('description', '')}"
+    )
+    if p_norm in full_user:
+        return True
+    p_toks = phrase_tokens(phrase)
+    norm_spaced = " ".join(p_toks)
+    if norm_spaced and norm_spaced in full_user:
+        return True
+    if len(p_toks) >= 2 and all(t in full_user.split() for t in p_toks):
+        return True
+    for pair in anchor.get("acronym_pairs") or []:
+        short = normalize_term(pair.get("short") or "")
+        full = normalize_term(pair.get("full") or "")
+        if (short and p_norm == short) or (full and p_norm == full):
+            return True
+        if short and full and (p_norm in {f"{full} {short}", f"{full}{short}"}):
+            return True
+        if short and (short in p_toks or p_norm == short):
+            return True
+    return False
+
+
+def check_source_consensus(
+    phrase: str,
+    anchor: Dict[str, Any],
+    sources: List[Dict[str, Any]],
+    *,
+    min_sources: int = 2,
+    allow_social_only: bool = False,
+) -> bool:
+    """
+    Multi-source consensus gate:
+    - User input is 100% verified ground truth (bypasses check).
+    - If total independent web sources < min_sources, fallback gracefully to available sources.
+    - Web-discovered candidates require >= min_sources independent domains.
+    - People and Organizations cannot be minted purely from social media (UGC).
+    """
+    if not phrase:
+        return False
+    # User ground truth bypasses consensus check
+    if is_phrase_in_user_input(phrase, anchor):
+        return True
+
+    if not sources:
+        return False
+
+    norm = normalize_term(phrase)
+    if not norm:
+        return False
+
+    p_toks = phrase_tokens(phrase)
+    norm_spaced = " ".join(p_toks)
+    matching_domains: Set[str] = set()
+    matching_tier1: Set[str] = set()
+
+    for s in sources:
+        domain = s.get("domain", "")
+        if not domain:
+            continue
+        norm_text = s.get("normalized_text", "")
+        if not norm_text:
+            continue
+
+        tokens_set = s.get("tokens_set")
+        if tokens_set is None:
+            tokens_set = set(norm_text.split())
+
+        matched = False
+        if norm in norm_text or (norm_spaced and norm_spaced in norm_text):
+            matched = True
+        elif len(p_toks) >= 2 and all(t in tokens_set for t in p_toks):
+            s_sents = s.get("sentences_norm", [])
+            if s_sents:
+                for sent_norm in s_sents:
+                    if all(t in sent_norm for t in p_toks):
+                        matched = True
+                        break
+            else:
+                matched = True
+        elif len(p_toks) == 1 and p_toks[0] in tokens_set:
+            matched = True
+
+        if matched:
+            matching_domains.add(domain)
+            if not s.get("is_social"):
+                matching_tier1.add(domain)
+
+    distinct_count = len(matching_domains)
+    total_distinct = len({s.get("domain") for s in sources if s.get("domain")})
+
+    threshold = min(min_sources, total_distinct) if total_distinct > 0 else 1
+
+    if distinct_count < threshold:
+        return False
+
+    # Block social-only People and Organizations
+    if not allow_social_only and not matching_tier1:
+        return False
+
+    return True
+
+
+
 def is_name_or_org_fragment(
     phrase: str,
     known_entities: List[str],
@@ -1140,10 +1591,9 @@ def is_name_or_org_fragment(
     allowed_singletons: Optional[Set[str]] = None,
 ) -> bool:
     """
-    Reject scrap pieces of fuller entities:
-    - 'cockroach' / 'party' when 'Cockroach Janta Party' exists
-    - 'gyanesh' / 'kumar' when 'Gyanesh Kumar' exists
-    - 'chief' when 'Chief Election Commissioner' exists
+    Reject scrap pieces of fuller entities already present in the candidate list
+    (e.g. a lone surname when the full person name exists, or 'party' when a
+    fuller organization name exists).
     """
     allowed = allowed_singletons or set()
     toks = phrase_tokens(phrase)
@@ -1432,10 +1882,11 @@ def strip_person_name_noise(phrase: str) -> str:
 
 def _clean_person_name(full: str) -> Optional[str]:
     """Return a cleaned plausible person name, or None."""
-    if not full or is_web_boilerplate(full) or is_incomplete_fragment(full):
+    if not full or is_web_boilerplate(full):
         return None
+    # Strip headline tails (Resign, Speech, …) before fragment checks.
     full = strip_person_name_noise(full)
-    if looks_like_place_or_scheme(full):
+    if not full or is_incomplete_fragment(full) or looks_like_place_or_scheme(full):
         return None
     words = full.split()
     role_prefixes = {
@@ -1443,6 +1894,8 @@ def _clean_person_name(full: str) -> Optional[str]:
         "spokesperson", "organizer", "organiser", "member", "members",
         "farmer", "farmers", "student", "students", "commissioner",
         "minister", "chief", "election",
+        # Broadcast intro words glued onto a capitalized name
+        "anchor", "host", "youtuber", "presenter",
     }
     while words and words[0].lower() in role_prefixes:
         words = words[1:]
@@ -1494,11 +1947,45 @@ def phrase_to_matching_hashtag(phrase: str) -> str:
     return to_hashtag(p2 or p)
 
 
+def extract_resignation_targets(text: str) -> List[str]:
+    """
+    Pull people who are the target of resignation / apology demands.
+    e.g. "resignation of education minister <Name>"
+    """
+    if not text:
+        return []
+    targets: List[str] = []
+    # Cue words are case-insensitive; the name group stays title-case so
+    # trailing words like "over school" are not swallowed.
+    name = r"([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})"
+    patterns = [
+        rf"(?i)(?:resignation of|resign(?:ation)?\s+(?:of|by))\s+"
+        rf"(?:(?:the|odisha|state)\s+)*(?:education\s+)?minister\s+(?-i:{name})\b",
+        rf"(?i)(?:demand(?:s|ed|ing)?|call(?:s|ed|ing)?\s+for)\s+(?:the\s+)?"
+        rf"resignation of\s+(?:(?:the|odisha|state)\s+)*(?:education\s+)?"
+        rf"(?:minister\s+)?(?-i:{name})\b",
+        rf"(?-i:\b{name})\s+(?i:should|must|to)\s+resign\b",
+        rf"(?-i:\b{name})\s+(?i:faces?|facing)\s+(?:calls?\s+for\s+)?resignation\b",
+        rf"(?i)(?:apology|apolog(?:y|ise|ize))\s+(?:from|by)\s+"
+        rf"(?:(?:the|odisha|state)\s+)*(?:education\s+)?minister\s+(?-i:{name})\b",
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            cand = m.group(1).strip()
+            cleaned = _clean_person_name(cand)
+            if cleaned:
+                targets.append(cleaned)
+    return targets
+
+
 def extract_people(text: str) -> List[str]:
     """Identify individual leaders, convenors, officials, and key figures."""
     people: List[str] = []
 
-    # 0. Role / agency patterns: "led by X", "organized by X", "addressed by X"
+    # 0. Resignation / accountability targets (minister demanded to resign, etc.)
+    people.extend(extract_resignation_targets(text))
+
+    # 1. Role / agency patterns: "led by X", "organized by X", "addressed by X"
     p_agency = (
         r"\b(?:led|organised|organized|spearheaded|convened|addressed|inaugurated|"
         r"headed|chaired|founded|started)\s+by\s+"
@@ -1512,7 +1999,7 @@ def extract_people(text: str) -> List[str]:
         if cleaned:
             people.append(cleaned)
 
-    # 1. Title/Role + Person Name
+    # 2. Title/Role + Person Name
     p_title = (
         r"\b(?:Shri|Smt|Dr|Prof|Mr|Mrs|Ms|Convenor|Convener|Leader|Minister|PM|CM|"
         r"President|Secretary|Director|Activist|Spokesperson|Advocate|Organiser|"
@@ -1524,7 +2011,7 @@ def extract_people(text: str) -> List[str]:
         if cleaned:
             people.append(cleaned)
 
-    # 2. Standalone Capitalized Names of Individuals
+    # 3. Standalone Capitalized Names of Individuals
     p_name = r"\b([A-Z][a-z]+)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b"
     for m in re.finditer(p_name, text):
         cleaned = _clean_person_name(m.group(0).strip())
@@ -1534,37 +2021,169 @@ def extract_people(text: str) -> List[str]:
     return people
 
 
-def classify_people_roles(people: List[str], text: str) -> Tuple[List[str], List[str]]:
+def _name_context_window(name: str, text: str, radius: int = 55) -> str:
+    """Lowercase text window around the first mention of a name."""
+    if not name or not text:
+        return ""
+    t_lower = text.lower()
+    p_lower = name.lower()
+    idx = t_lower.find(p_lower)
+    if idx < 0:
+        return ""
+    return t_lower[max(0, idx - radius): idx + len(p_lower) + radius]
+
+
+def is_media_coverage_noise(name: str, text: str = "") -> bool:
     """
-    Split people into main_leaders vs other participating figures using nearby role cues.
+    Structural filter only — no brand or person name lists.
+
+    Rejects:
+    - phrases that include non-person concept words
+    - abstract headline concepts
+    - names that start with a host-role word (Anchor/Host …)
+    - names grammatically introduced as a show host ("hosted by X", "anchor X")
+    """
+    if not name:
+        return True
+    if is_abstract_headline_phrase(name):
+        return True
+    toks = _phrase_word_list(name)
+    if not toks:
+        return False
+    if any(t in NON_PERSON_WORDS for t in toks):
+        return True
+    if toks[0] in {"anchor", "host", "youtuber", "presenter"}:
+        return True
+    if not text:
+        return False
+    # Strip a leading host-role word before matching surrounding grammar
+    core = name
+    for prefix in ("Anchor ", "Host ", "Youtuber ", "Presenter "):
+        if core.lower().startswith(prefix.lower()):
+            core = core[len(prefix):].strip()
+            break
+    escaped = re.escape(core or name)
+    host_patterns = (
+        rf"(?i)\b(?:hosted|presented)\s+by\s+{escaped}\b",
+        rf"(?i)\b(?:anchor|host|youtuber|presenter)\s+{escaped}\b",
+    )
+    return any(re.search(pat, text) for pat in host_patterns)
+
+
+def is_person_in_user_input(person: str, anchor: Dict[str, Any]) -> bool:
+    """True when the user named this person in the event or description."""
+    if not person or not anchor:
+        return False
+    blob = f"{anchor.get('event', '')} {anchor.get('description', '')}".lower()
+    return person.lower() in blob
+
+
+def is_resignation_demand_target(person: str, text: str) -> bool:
+    """True when grammar links this person to a resignation / apology demand."""
+    if not person or not text:
+        return False
+    p = re.escape(person)
+    patterns = (
+        rf"(?i)resignation of(?:\s+\w+){{0,4}}\s+{p}\b",
+        rf"(?i){p}\s+(?:should|must|to)\s+resign\b",
+        rf"(?i)(?:demand(?:s|ed|ing)?|call(?:s|ed|ing)?\s+for)\s+"
+        rf"(?:the\s+)?resignation of(?:\s+\w+){{0,4}}\s+{p}\b",
+        rf"(?i){p}\s+(?:faces?|facing)\s+(?:calls?\s+for\s+)?resignation\b",
+        rf"(?i)(?:apology|apolog(?:ise|ize))\s+(?:from|by)(?:\s+\w+){{0,4}}\s+{p}\b",
+    )
+    return any(re.search(pat, text) for pat in patterns)
+
+
+def _sentence_with_name(person: str, text: str) -> str:
+    """Return the sentence containing the person name, or empty."""
+    if not person or not text:
+        return ""
+    p_lower = person.lower()
+    for sentence in re.split(r"(?<=[.?!;])\s+|\n+", text):
+        if p_lower in sentence.lower():
+            return sentence.lower()
+    return ""
+
+
+def _person_shares_event_context(
+    person: str,
+    anchor: Dict[str, Any],
+    corpus: str,
+) -> bool:
+    """True when the same sentence as the name carries user event/description tokens."""
+    sentence = _sentence_with_name(person, corpus)
+    if not sentence:
+        return False
+    event_toks = set(tokenize(anchor.get("event", ""))) - STOP_WORDS - GENERIC_THEME_TOKENS
+    desc_toks = set(tokenize(anchor.get("description", ""))) - STOP_WORDS - GENERIC_THEME_TOKENS
+    distinctive = {
+        t for t in (event_toks | desc_toks)
+        if len(t) >= 3 and not t.isdigit() and t not in GENERIC_EVENT_TOKENS
+    }
+    for pair in anchor.get("acronym_pairs") or []:
+        short = (pair.get("short") or "").lower()
+        if short:
+            distinctive.add(short)
+    return bool(distinctive & set(tokenize(sentence)))
+
+
+def is_person_grounded_for_output(
+    person: str,
+    anchor: Dict[str, Any],
+    corpus: str,
+) -> bool:
+    """
+    Keep a person when grounded in user input, resignation-demand grammar,
+    or co-occurrence with the user's event tokens. No name allowlists.
+    """
+    if not person or is_media_coverage_noise(person, corpus):
+        return False
+    if is_person_in_user_input(person, anchor):
+        return True
+    if is_resignation_demand_target(person, corpus):
+        return True
+    return _person_shares_event_context(person, anchor, corpus)
+
+
+def classify_people_roles(
+    people: List[str],
+    text: str,
+    anchor: Optional[Dict[str, Any]] = None,
+) -> Tuple[List[str], List[str]]:
+    """
+    Split grounded people into leaders vs participants using grammar only:
+    resignation targets and nearby role verbs/titles become leaders; others stay
+    participants when they share event context with the user's input.
     """
     leaders: List[str] = []
     participants: List[str] = []
     t_lower = text.lower()
-    leader_cues = (
-        "led by", "convenor", "convener", "founder", "president", "chief",
-        "minister", "cm ", "pm ", "organised by", "organized by", "spearheaded",
-        "chairperson", "coordinator", "main leader", "key leader",
+    anchor = anchor or {}
+    # Role grammar already used elsewhere in this module (not entity names)
+    leader_role_re = re.compile(
+        r"\b(?:led by|convenor|convener|founder|president|chief(?:\s+minister)?|"
+        r"minister|organised by|organized by|spearheaded|chairperson|coordinator)\b",
+        re.I,
     )
 
     for person in people:
+        if is_media_coverage_noise(person, text):
+            continue
+        if not is_person_grounded_for_output(person, anchor, text):
+            continue
         p_lower = person.lower()
         idx = t_lower.find(p_lower)
         window = t_lower[max(0, idx - 40): idx + len(p_lower) + 40] if idx >= 0 else ""
-        if any(cue in window for cue in leader_cues) or any(cue in t_lower and p_lower in t_lower for cue in ("led by " + p_lower, "convenor " + p_lower)):
+        is_leader = is_resignation_demand_target(person, text) or bool(
+            leader_role_re.search(window)
+        )
+        if is_leader:
             leaders.append(person)
         else:
             participants.append(person)
 
-    # If no cue-based leaders, treat top unique people as leaders/participants split
-    if not leaders and people:
-        uniq = list(dict.fromkeys(people))
-        leaders = uniq[:2]
-        participants = uniq[2:]
-    else:
-        # Keep participants free of leaders
-        lead_set = {normalize_term(x) for x in leaders}
-        participants = [p for p in participants if normalize_term(p) not in lead_set]
+    lead_set = {normalize_term(x) for x in leaders}
+    participants = [p for p in participants if normalize_term(p) not in lead_set]
 
     return list(dict.fromkeys(leaders)), list(dict.fromkeys(participants))
 
@@ -1646,10 +2265,12 @@ def extract_organizations(text: str, anchor: Optional[Dict[str, Any]] = None) ->
             if not is_incomplete_fragment(clean_o):
                 orgs.append(clean_o)
 
-    # 4. Known / user acronyms only (do not invent random ALLCAPS noise)
-    known_acros = set(KNOWN_ACRONYMS)
+    # 4. Acronyms the user actually typed (do not promote a fixed acronym list)
+    known_acros: Set[str] = set()
     for pair in anchor.get("acronym_pairs", []):
-        known_acros.add((pair.get("short") or "").lower())
+        short = (pair.get("short") or "").lower()
+        if short:
+            known_acros.add(short)
     for m in re.finditer(r"\b[A-Z]{2,6}\b", text):
         acr = m.group()
         if acr.lower() in known_acros:
@@ -1737,16 +2358,6 @@ def extract_locations(text: str, user_location: str) -> Tuple[List[str], List[st
         if len(v) >= 4 and not is_incomplete_fragment(v) and v.lower() not in STOP_WORDS:
             venues.append(v)
             locs.append(v)
-
-    KNOWN_CITIES = {
-        "bhubaneswar", "cuttack", "puri", "delhi", "new delhi", "noida", "gurugram",
-        "hyderabad", "secunderabad", "ahmedabad", "gandhinagar", "vadodara", "surat",
-        "mumbai", "pune", "bengaluru", "chennai", "kolkata", "chandigarh", "jaipur",
-        "srinagar", "shimla", "lucknow", "patna", "ranchi", "guwahati", "raipur",
-    }
-    for city in KNOWN_CITIES:
-        if re.search(rf"\b{city}\b", text, re.IGNORECASE):
-            locs.append(city.title())
 
     return locs, venues
 
@@ -1840,6 +2451,553 @@ def extract_demands_and_issues(text: str, anchor: Dict[str, Any]) -> Tuple[List[
     return demands, about
 
 
+def _script_range(regional_data: Optional[Dict[str, Any]]) -> Optional[Tuple[int, int]]:
+    """Unicode block for the location language, when one was detected."""
+    if not regional_data:
+        return None
+    lang_info = regional_data.get("lang_info") or {}
+    raw = lang_info.get("range")
+    if not raw or len(raw) != 2:
+        return None
+    return int(raw[0]), int(raw[1])
+
+
+def _in_location_language(text: str, script_range: Optional[Tuple[int, int]]) -> bool:
+    """Keep the location script. English-only text is not a regional term."""
+    if script_range is None:
+        return is_indic_text(text)
+    return is_target_script_text(text, script_range)
+
+
+def _indic_tokens(text: str, script_range: Optional[Tuple[int, int]] = None) -> List[str]:
+    """Split text into Indic-script tokens, excluding danda boundaries.
+
+    When a location language is known, tokens from every other Indic script
+    are dropped. Odisha keeps Odia only.
+    """
+    tokens: List[str] = []
+    for word in re.findall(r"[\u0900-\u0963\u0966-\u0D7F]+", text):
+        if len(word) <= 1:
+            continue
+        if script_range is not None and not all(
+            script_range[0] <= ord(ch) <= script_range[1] for ch in word
+        ):
+            continue
+        tokens.append(word.lower())
+    return tokens
+
+
+def _extract_indic_candidate_phrases(
+    text: str,
+    script_range: Optional[Tuple[int, int]] = None,
+) -> List[str]:
+    """
+    Extract Indic 2- and 3-word phrases using the same stopword and danda rules
+    as the multilingual processor. Latin-only tokens are ignored. With a script
+    range, phrases from other languages are ignored too.
+    """
+    sentences = [s.strip() for s in re.split(r"[.\n!?|\u0964\u0965]+", text) if s.strip()]
+    candidates: List[str] = []
+    allowed_middle = {"of", "for", "and", "in", "ଓ", "ଏବଂ", "का", "की", "के"}
+
+    for sentence in sentences:
+        tokens = _indic_tokens(sentence, script_range)
+        if not tokens:
+            continue
+        for i in range(len(tokens) - 1):
+            w1, w2 = tokens[i], tokens[i + 1]
+            if w1 in INDIC_STOP_WORDS or w2 in INDIC_STOP_WORDS:
+                continue
+            if w1.isdigit() or w2.isdigit():
+                continue
+            candidates.append(f"{w1} {w2}")
+        for i in range(len(tokens) - 2):
+            w1, w2, w3 = tokens[i], tokens[i + 1], tokens[i + 2]
+            if w1 in INDIC_STOP_WORDS or w3 in INDIC_STOP_WORDS:
+                continue
+            if w1.isdigit() or w2.isdigit() or w3.isdigit():
+                continue
+            if w2 in allowed_middle or w2 not in INDIC_STOP_WORDS:
+                candidates.append(f"{w1} {w2} {w3}")
+    return candidates
+
+
+
+def _event_signal_tokens(
+    anchor: Optional[Dict[str, Any]],
+    regional_data: Optional[Dict[str, Any]],
+    script_range: Optional[Tuple[int, int]],
+) -> Set[str]:
+    """Tokens from user event/description plus translated event/location."""
+    signals: Set[str] = set()
+    if anchor:
+        for key in ("event", "description"):
+            signals.update(
+                t for t in tokenize(anchor.get(key, ""))
+                if t not in STOP_WORDS and t not in GENERIC_THEME_TOKENS and len(t) >= 3
+            )
+        for pair in anchor.get("acronym_pairs") or []:
+            short = (pair.get("short") or "").lower()
+            if short:
+                signals.add(short)
+    if regional_data:
+        for key in ("translated_event", "translated_location"):
+            phrase = regional_data.get(key)
+            if phrase:
+                signals.update(_indic_tokens(str(phrase), script_range))
+                for tok in tokenize(str(phrase)):
+                    if len(tok) >= 3:
+                        signals.add(tok)
+    return signals
+
+
+def _sentence_has_event_signal(sentence: str, signals: Set[str]) -> bool:
+    if not sentence or not signals:
+        return False
+    sent_toks = set(tokenize(sentence)) | set(_indic_tokens(sentence))
+    return bool(signals & sent_toks)
+
+
+def _sentence_has_any_marker(sentence: str, markers: Set[str], english_cues: Tuple[str, ...]) -> bool:
+    lower = sentence.lower()
+    if any(cue in lower for cue in english_cues):
+        return True
+    sent_toks = set(_indic_tokens(sentence))
+    return bool(sent_toks & markers)
+
+
+def extract_indic_hashtags_from_text(
+    text: str,
+    script_range: Optional[Tuple[int, int]],
+) -> List[str]:
+    """Collect native-script hashtags directly from retrieved page text."""
+    if not text:
+        return []
+    found: List[str] = []
+    for body in re.findall(r"#([A-Za-z0-9_\u0900-\u0D7F]{2,40})", text):
+        tag = f"#{body}"
+        if script_range is not None and not is_target_script_text(tag, script_range):
+            continue
+        if not is_indic_text(tag):
+            continue
+        if 2 < len(body) <= 28 and tag not in found:
+            found.append(tag)
+    return found
+
+
+def extract_indic_people_from_text(
+    text: str,
+    script_range: Optional[Tuple[int, int]],
+    anchor: Optional[Dict[str, Any]],
+    regional_data: Optional[Dict[str, Any]],
+) -> List[str]:
+    """
+    Extract event-involved people written in the location language from web text.
+    Uses role markers + event-signal grounding (same idea as English people extraction).
+    """
+    if not text:
+        return []
+    signals = _event_signal_tokens(anchor, regional_data, script_range)
+    loc_tokens: Set[str] = set()
+    if regional_data and regional_data.get("translated_location"):
+        loc_tokens = set(
+            _indic_tokens(str(regional_data["translated_location"]), script_range)
+        )
+    counts: Counter = Counter()
+    role_backed: Set[str] = set()
+
+    for sentence in re.split(r"[.\n!?|\u0964\u0965]+", text):
+        sentence = sentence.strip()
+        if len(sentence) < 8:
+            continue
+        if not _sentence_has_event_signal(sentence, signals):
+            continue
+        tokens = _indic_tokens(sentence, script_range)
+        if len(tokens) < 2:
+            continue
+        has_role = _sentence_has_any_marker(
+            sentence, INDIC_ROLE_MARKERS, ENGLISH_ROLE_CUES_IN_SENTENCE
+        )
+        if not has_role:
+            continue
+        for i in range(len(tokens) - 1):
+            for width in (2, 3):
+                if i + width > len(tokens):
+                    continue
+                words = tokens[i: i + width]
+                if any(
+                    w in INDIC_STOP_WORDS
+                    or w in INDIC_ROLE_MARKERS
+                    or w in INDIC_CAMPAIGN_MARKERS
+                    or w in loc_tokens
+                    for w in words
+                ):
+                    continue
+                if any(len(w) < 2 for w in words):
+                    continue
+                phrase = " ".join(words)
+                counts[phrase] += 1
+                role_backed.add(phrase)
+
+    people: List[str] = []
+    for phrase, _count in counts.most_common():
+        if phrase in role_backed:
+            people.append(phrase)
+        if len(people) >= 8:
+            break
+    return people
+
+
+def extract_indic_campaigns_from_text(
+    text: str,
+    script_range: Optional[Tuple[int, int]],
+    anchor: Optional[Dict[str, Any]],
+    regional_data: Optional[Dict[str, Any]],
+    exclude_people: Optional[Set[str]] = None,
+) -> List[str]:
+    """
+    Extract important event / campaign phrases in the location language from web text.
+    Grounded by campaign markers in the phrase or overlap with the translated event name.
+    """
+    if not text:
+        return []
+    signals = _event_signal_tokens(anchor, regional_data, script_range)
+    translated_event_tokens = set()
+    if regional_data and regional_data.get("translated_event"):
+        translated_event_tokens = set(
+            _indic_tokens(str(regional_data["translated_event"]), script_range)
+        )
+    skip_people = {p.lower() for p in (exclude_people or set())}
+
+    counts: Counter = Counter()
+    campaign_backed: Set[str] = set()
+
+    for sentence in re.split(r"[.\n!?|\u0964\u0965]+", text):
+        sentence = sentence.strip()
+        if len(sentence) < 8:
+            continue
+        if not _sentence_has_event_signal(sentence, signals):
+            continue
+        tokens = _indic_tokens(sentence, script_range)
+        if len(tokens) < 2:
+            continue
+        has_campaign = _sentence_has_any_marker(
+            sentence, INDIC_CAMPAIGN_MARKERS, ENGLISH_CAMPAIGN_CUES_IN_SENTENCE
+        )
+        if not has_campaign and not translated_event_tokens:
+            continue
+        for i in range(len(tokens) - 1):
+            for width in (2, 3, 4):
+                if i + width > len(tokens):
+                    continue
+                words = tokens[i: i + width]
+                if words[0] in INDIC_STOP_WORDS or words[-1] in INDIC_STOP_WORDS:
+                    continue
+                if any(w in INDIC_ROLE_MARKERS for w in words):
+                    continue
+                if sum(1 for w in words if w in INDIC_STOP_WORDS) > 1:
+                    continue
+                phrase = " ".join(words)
+                if phrase.lower() in skip_people:
+                    continue
+                overlaps_event = bool(set(words) & translated_event_tokens) if translated_event_tokens else False
+                touches_campaign_marker = bool(set(words) & INDIC_CAMPAIGN_MARKERS)
+                # Require the phrase itself to carry campaign or event signal
+                if not (overlaps_event or touches_campaign_marker):
+                    continue
+                counts[phrase] += 1
+                campaign_backed.add(phrase)
+
+    campaigns: List[str] = []
+    for phrase, _count in counts.most_common():
+        if phrase in campaign_backed:
+            campaigns.append(phrase)
+        if len(campaigns) >= 8:
+            break
+    return campaigns
+
+
+def _phrase_in_harvest(
+    phrase: Optional[str],
+    harvest_text: str,
+    script_range: Optional[Tuple[int, int]],
+) -> bool:
+    """True when a phrase (or its script tokens) appears in retrieved content."""
+    if not phrase or not harvest_text:
+        return False
+    clean = str(phrase).strip()
+    if not clean:
+        return False
+    if clean in harvest_text:
+        return True
+    tokens = _indic_tokens(clean, script_range)
+    if not tokens:
+        return False
+    harvest_tokens = set(_indic_tokens(harvest_text, script_range))
+    return all(tok in harvest_tokens for tok in tokens)
+
+
+def _text_has_script(text: str, script_range: Optional[Tuple[int, int]]) -> bool:
+    if not text or not script_range:
+        return False
+    start, end = script_range
+    return any(start <= ord(ch) <= end for ch in text if not ch.isspace())
+
+
+def _build_language_harvest(
+    relevant_corpus: str,
+    search_results: List[Dict[str, Any]],
+    anchor: Optional[Dict[str, Any]],
+    script_range: Optional[Tuple[int, int]],
+) -> str:
+    """
+    Build harvest text for one language. Prefer the relevance-filtered corpus;
+    if it lacks the target script, fall back to retrieved pages that contain it
+    so primary-language terms are not lost when other languages have no content.
+    """
+    harvest_text = (relevant_corpus or "").strip()
+    if harvest_text and (
+        script_range is None or _text_has_script(harvest_text, script_range)
+    ):
+        return harvest_text
+
+    pieces: List[str] = []
+    script_pieces: List[str] = []
+    for result in search_results:
+        page_text = " ".join(
+            str(result.get(key) or "")
+            for key in ("title", "snippet", "content", "markdown")
+        )
+        if not page_text.strip():
+            continue
+        if script_range is not None and _text_has_script(page_text, script_range):
+            script_pieces.append(page_text)
+        if anchor and not is_content_relevant(page_text, anchor):
+            continue
+        pieces.append(page_text)
+
+    if script_range is not None and script_pieces:
+        # Prefer script-bearing pages that also pass relevance; else any script pages.
+        relevant_script = [
+            p for p in script_pieces
+            if not anchor or is_content_relevant(p, anchor)
+        ]
+        return " . ".join(relevant_script or script_pieces)
+
+    if pieces:
+        return " . ".join(pieces)
+    return harvest_text
+
+
+def _merge_regional_terms(
+    hashtags: List[str],
+    keywords: List[str],
+    regional_data: Optional[Dict[str, Any]],
+    search_results: List[Dict[str, Any]],
+    max_hashtags: Optional[int],
+    max_keywords: Optional[int],
+    anchor: Optional[Dict[str, Any]] = None,
+    relevant_corpus: str = "",
+) -> Tuple[List[str], List[str]]:
+    """
+    Prepend native-script hashtags and keywords for one selected language.
+    Existing English terms stay in their current order. With no regional data, both lists
+    are returned unchanged.
+
+    Regional terms come from content-backed extraction only:
+    1) people and campaigns extracted from relevance-filtered multilingual page text,
+    2) native-script hashtags found on those pages,
+    3) additional Indic phrases that touch translated event/location tokens when those
+       translations appear in the harvested content,
+    4) translated event/location only when they themselves appear in harvested content
+       (never translation-only seeding).
+    """
+    if not regional_data:
+        return hashtags, keywords
+
+    script_range = _script_range(regional_data)
+    trans_event = regional_data.get("translated_event")
+    trans_loc = regional_data.get("translated_location")
+    if trans_event and not _in_location_language(str(trans_event), script_range):
+        trans_event = None
+    if trans_loc and not _in_location_language(str(trans_loc), script_range):
+        trans_loc = None
+    regional_hashtags: List[str] = []
+    regional_keywords: List[str] = []
+    seen_tags = {h.lstrip("#") for h in hashtags}
+    seen_keywords = set(keywords)
+
+    def add_hashtag(tag: str) -> None:
+        if not tag or not _in_location_language(tag, script_range):
+            return
+        formatted = format_indic_hashtag(tag[1:] if tag.startswith("#") else tag)
+        if not formatted:
+            return
+        body = formatted[1:]
+        if body in seen_tags or not (3 <= len(body) <= 25):
+            return
+        if not _in_location_language(formatted, script_range):
+            return
+        regional_hashtags.append(formatted)
+        seen_tags.add(body)
+
+    def add_keyword(phrase: str) -> None:
+        if not phrase or not _in_location_language(phrase, script_range):
+            return
+        norm = phrase.strip().lower()
+        if len(norm) <= 2 or norm in seen_keywords or norm in INDIC_STOP_WORDS:
+            return
+        regional_keywords.append(norm)
+        seen_keywords.add(norm)
+
+    def add_phrase_pair(phrase: str) -> None:
+        add_keyword(phrase)
+        tag = format_indic_hashtag(phrase)
+        if tag and 2 < len(tag) <= 28:
+            add_hashtag(tag)
+
+    harvest_text = _build_language_harvest(
+        relevant_corpus, search_results, anchor, script_range
+    )
+    has_native_script = _text_has_script(harvest_text, script_range)
+
+    # Always include selected-language translations of event/location/description
+    # seeds (validated script). News pages are often English-only; without this,
+    # Odia selection produced zero Odia terms even though translation succeeded.
+    user_indic = set()
+    if trans_event:
+        user_indic.add(str(trans_event).strip().lower())
+        add_hashtag(format_indic_hashtag(trans_event))
+        add_keyword(str(trans_event).strip().lower())
+    if trans_loc:
+        user_indic.add(str(trans_loc).strip().lower())
+        add_keyword(str(trans_loc).strip().lower())
+        for segment in re.split(r"[,;/|]+", str(trans_loc)):
+            segment = segment.strip()
+            if segment:
+                add_hashtag(format_indic_hashtag(segment))
+    for seed in regional_data.get("translated_seeds") or []:
+        if not seed or not _in_location_language(str(seed), script_range):
+            continue
+        user_indic.add(str(seed).strip().lower())
+        add_phrase_pair(str(seed).strip())
+
+    user_indic_tokens = set()
+    for phrase in user_indic:
+        user_indic_tokens.update(_indic_tokens(phrase, script_range))
+    grounding_tokens = set(user_indic_tokens)
+    if trans_event:
+        grounding_tokens.update(_indic_tokens(str(trans_event), script_range))
+    if trans_loc:
+        grounding_tokens.update(_indic_tokens(str(trans_loc), script_range))
+
+    indic_people: List[str] = []
+    indic_campaigns: List[str] = []
+
+    # Native-script people / campaigns / hashtags only when retrieved pages
+    # actually contain that script (no fabricated Indic text).
+    if has_native_script:
+        indic_people = extract_indic_people_from_text(
+            harvest_text, script_range, anchor, regional_data
+        )
+        for person in indic_people:
+            add_phrase_pair(person)
+
+        indic_campaigns = extract_indic_campaigns_from_text(
+            harvest_text,
+            script_range,
+            anchor,
+            regional_data,
+            exclude_people=set(indic_people),
+        )
+        for campaign in indic_campaigns:
+            add_phrase_pair(campaign)
+
+        for tag in extract_indic_hashtags_from_text(harvest_text, script_range):
+            add_hashtag(tag)
+
+        if grounding_tokens:
+            phrase_counts = Counter(
+                _extract_indic_candidate_phrases(harvest_text, script_range)
+            )
+            for phrase, _count in phrase_counts.most_common():
+                words = phrase.split()
+                if len(words) == 1 and phrase not in user_indic:
+                    continue
+                if any(word in INDIC_STOP_WORDS for word in words):
+                    continue
+                if not (set(words) & grounding_tokens):
+                    continue
+                add_phrase_pair(phrase)
+
+    # Expose extractions for entity reporting (consumed by process_content)
+    regional_data["_indic_people"] = list(indic_people)
+    regional_data["_indic_campaigns"] = list(indic_campaigns)
+
+    merged_hashtags = regional_hashtags + hashtags
+    merged_keywords = regional_keywords + keywords
+    if max_hashtags is not None:
+        merged_hashtags = merged_hashtags[:max_hashtags]
+    if max_keywords is not None:
+        merged_keywords = merged_keywords[:max_keywords]
+    return merged_hashtags, merged_keywords
+
+
+def _merge_multilingual_terms(
+    hashtags: List[str],
+    keywords: List[str],
+    regional_languages: List[Dict[str, Any]],
+    search_results: List[Dict[str, Any]],
+    max_hashtags: Optional[int],
+    max_keywords: Optional[int],
+    anchor: Optional[Dict[str, Any]] = None,
+    relevant_corpus: str = "",
+) -> Tuple[List[str], List[str], List[str], List[str]]:
+    """
+    Apply the same content-backed regional merge for each selected language.
+    Primary (location) language is processed first. Languages without content are
+    skipped without clearing terms already extracted from the primary language.
+    """
+    indic_people: List[str] = []
+    indic_campaigns: List[str] = []
+    ordered = sorted(
+        [entry for entry in regional_languages if entry],
+        key=lambda entry: (0 if entry.get("is_primary") else 1),
+    )
+    for lang_entry in ordered:
+        before_tags, before_keys = len(hashtags), len(keywords)
+        hashtags, keywords = _merge_regional_terms(
+            hashtags,
+            keywords,
+            lang_entry,
+            search_results,
+            max_hashtags=None,
+            max_keywords=None,
+            anchor=anchor,
+            relevant_corpus=relevant_corpus,
+        )
+        # Non-primary languages that add nothing must not affect prior results.
+        if (
+            not lang_entry.get("is_primary")
+            and len(hashtags) == before_tags
+            and len(keywords) == before_keys
+        ):
+            lang_entry.pop("_indic_people", None)
+            lang_entry.pop("_indic_campaigns", None)
+            continue
+        for person in lang_entry.pop("_indic_people", []) or []:
+            if person not in indic_people:
+                indic_people.append(person)
+        for campaign in lang_entry.pop("_indic_campaigns", []) or []:
+            if campaign not in indic_campaigns:
+                indic_campaigns.append(campaign)
+    if max_hashtags is not None:
+        hashtags = hashtags[:max_hashtags]
+    if max_keywords is not None:
+        keywords = keywords[:max_keywords]
+    return hashtags, keywords, indic_people, indic_campaigns
+
+
 def process_content(
     event: str,
     location: str,
@@ -1847,6 +3005,8 @@ def process_content(
     search_results: List[Dict[str, Any]],
     max_keywords: Optional[int] = None,
     max_hashtags: Optional[int] = None,
+    regional_data: Optional[Dict[str, Any]] = None,
+    regional_languages: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Deterministically processes web search content into event facts:
@@ -1869,9 +3029,13 @@ def process_content(
             existing[pair["short"]] = pair
             anchor["acronym_pairs"] = list(existing.values())
 
+    processed_sources: List[Dict[str, Any]] = []
     page_passages: List[str] = []
 
     for r in search_results:
+        url = r.get("url", "")
+        domain = extract_source_domain(url)
+        is_social = is_social_domain(domain)
         title = r.get("title", "")
         snip = r.get("snippet", "")
         body = r.get("content", "") or r.get("markdown", "")
@@ -1887,6 +3051,7 @@ def process_content(
         page_tags = re.findall(r"#([A-Za-z0-9_]{3,28})", cleaned)
         page_kept = 0
         sentences = re.split(r"(?<=[.?!;])\s+|\n+", cleaned)
+        kept_sentences_norm: List[str] = []
         for s in sentences:
             s_clean = s.strip()
             if len(s_clean) <= 12 or is_boilerplate_sentence(s_clean):
@@ -1898,15 +3063,30 @@ def process_content(
             ):
                 continue
             relevant_corpus_parts.append(s_clean)
+            kept_sentences_norm.append(normalize_term(s_clean))
             page_kept += 1
 
         if page_kept > 0 and body_passages:
             page_passages.extend(body_passages)
 
-        # Hashtags only from pages that contributed kept sentences (or a strong title)
+        # Hashtags and sources only from pages that contributed kept sentences (or a strong title)
         title_snip = clean_text(f"{title}. {snip}")
-        if page_kept > 0 or is_strongly_event_relevant(title_snip, anchor):
+        is_strong_page = page_kept > 0 or is_strongly_event_relevant(title_snip, anchor)
+        if is_strong_page:
             found_hashtags.extend(page_tags)
+            eff_domain = domain or extract_source_domain(r.get("link", ""))
+            if not eff_domain and title:
+                eff_domain = f"source_{normalize_term(title)[:20]}"
+            if eff_domain:
+                norm_combined = normalize_term(cleaned)
+                processed_sources.append({
+                    "url": url,
+                    "domain": eff_domain,
+                    "is_social": is_social,
+                    "normalized_text": norm_combined,
+                    "tokens_set": set(norm_combined.split()),
+                    "sentences_norm": kept_sentences_norm,
+                })
 
     if not relevant_corpus_parts:
         relevant_corpus_parts.append(anchor["full_text"])
@@ -1935,25 +3115,84 @@ def process_content(
     demands = list(user_seeds.get("demands") or []) + list(demands)
     about_topics = list(user_seeds.get("about") or []) + list(about_topics)
 
+    # Content-backed phrases that carry the user's description themes
+    # (theme words must appear in retrieved pages — never invented).
+    theme_tokens = description_theme_tokens(description)
+    theme_phrases = extract_theme_backed_phrases(corpus, theme_tokens)
+    about_topics = list(about_topics) + list(theme_phrases)
+
     locs = [l for l in locs if is_location_in_user_scope(l, location)]
     venues = [v for v in venues if is_location_in_user_scope(v, location)]
 
-    # Demands / about must carry distinctive event signal (not generic "outdoor/music" SEO)
+    # Demands / about must carry distinctive event signal and multi-source consensus
     demands = [
         d for d in demands
         if d and not is_incomplete_fragment(d) and not is_marketing_or_listicle_scrap(d)
+        and not is_abstract_headline_phrase(d)
         and has_distinctive_event_signal(d, anchor)
+        and check_source_consensus(d, anchor, processed_sources, allow_social_only=True)
     ]
     about_topics = [
         a for a in about_topics
         if a and not is_incomplete_fragment(a) and not is_marketing_or_listicle_scrap(a)
+        and not is_abstract_headline_phrase(a)
         and has_distinctive_event_signal(a, anchor)
+        and check_source_consensus(a, anchor, processed_sources, allow_social_only=True)
     ]
 
-    main_leaders, participants = classify_people_roles(people_raw, corpus)
+    event_toks = set(tokenize(event)) - STOP_WORDS
+    venue_norms = {normalize_term(x) for x in (venues + locs) if x}
+
+    theme_toks = set(theme_tokens)
+
+    def _is_plausible_person(p: str) -> bool:
+        cleaned = _clean_person_name(p)
+        if not cleaned:
+            return False
+        if is_media_coverage_noise(cleaned, corpus) or is_abstract_headline_phrase(cleaned):
+            return False
+        p_toks = [t.lower() for t in tokenize(cleaned)]
+        if not p_toks:
+            return False
+        # Event-title scraps (2+ shared tokens)
+        if len(set(p_toks) & event_toks) >= 2:
+            return False
+        # Labels that reuse an event token as the final word (not a personal surname)
+        if p_toks[-1] in event_toks:
+            return False
+        # Description themes are topics, not people
+        if set(p_toks) & theme_toks:
+            return False
+        if normalize_term(cleaned) in venue_norms:
+            return False
+        return True
+
+    people_raw = [
+        p for p in people_raw
+        if _is_plausible_person(p)
+        and check_source_consensus(p, anchor, processed_sources, allow_social_only=False)
+    ]
+    people_raw = [
+        cleaned for cleaned in (_clean_person_name(p) for p in people_raw)
+        if cleaned
+    ]
+    main_leaders, participants = classify_people_roles(people_raw, corpus, anchor)
     for p in user_people:
+        if is_media_coverage_noise(p, corpus):
+            continue
         if p not in main_leaders and p not in participants:
             main_leaders.insert(0, p)
+    # Keep only people named by the user or role-grounded in the corpus with multi-source consensus
+    main_leaders = [
+        p for p in main_leaders
+        if is_person_grounded_for_output(p, anchor, corpus)
+        and check_source_consensus(p, anchor, processed_sources, allow_social_only=False)
+    ]
+    participants = [
+        p for p in participants
+        if is_person_grounded_for_output(p, anchor, corpus)
+        and check_source_consensus(p, anchor, processed_sources, allow_social_only=False)
+    ]
 
     acronyms = collect_event_acronyms(
         event,
@@ -1990,6 +3229,8 @@ def process_content(
         if o.lower() in {d.lower() for d in demands} or o.lower() in {a.lower() for a in about_topics}:
             if not (set(tokenize(o)) & ORGANIZATION_INDICATORS):
                 continue
+        if not check_source_consensus(o, anchor, processed_sources, allow_social_only=False):
+            continue
         cleaned_orgs.append(o)
     orgs = cleaned_orgs
     for pair in acronyms:
@@ -2006,10 +3247,12 @@ def process_content(
     venues = [
         reconcile_place_name(v, list(venues) + list(loc_info.get("parts") or []))
         for v in venues
+        if check_source_consensus(v, anchor, processed_sources, allow_social_only=False)
     ]
     locs = [
         reconcile_place_name(l, list(venues) + list(loc_info.get("parts") or []))
         for l in locs
+        if check_source_consensus(l, anchor, processed_sources, allow_social_only=False)
     ]
     # Prefer repaired spelling; drop near-duplicate typo forms
     def _dedupe_places(items: List[str]) -> List[str]:
@@ -2081,6 +3324,8 @@ def process_content(
             return
         if not is_valid_hashtag(tag, anchor):
             return
+        if not check_source_consensus(tag, anchor, processed_sources, allow_social_only=True):
+            return
         t_norm = normalize_term(tag)
         if t_norm in seen_ht_norm or len(t_norm) < 2:
             return
@@ -2123,8 +3368,10 @@ def process_content(
         if len(to_hashtag(v)) <= 25:
             add_hashtag(to_hashtag(v))
 
-    # C. About / demands
+    # C. About / demands (skip abstract headline scraps)
     for topic in list(dict.fromkeys(about_topics + demands))[:6]:
+        if is_abstract_headline_phrase(topic) or is_clickbait_headline_scrap(topic):
+            continue
         tag = to_hashtag(topic)
         if 4 <= len(tag) <= 25:
             add_hashtag(tag)
@@ -2145,10 +3392,15 @@ def process_content(
         ):
             add_hashtag(to_hashtag(o))
 
-    # E. People — full names only (e.g. Gyanesh Kumar, not Gyanesh / Kumar)
+    # E. People — full cleaned names only; skip journalists/hosts / headline scraps
     for p in (main_leaders + participants)[:6]:
-        if 2 <= len(phrase_tokens(p)) <= 4 and len(to_hashtag(p)) <= 22:
-            add_hashtag(to_hashtag(p))
+        cleaned = _clean_person_name(p)
+        if not cleaned or not is_person_grounded_for_output(cleaned, anchor, corpus):
+            continue
+        if is_abstract_headline_phrase(cleaned) or is_media_coverage_noise(cleaned, corpus):
+            continue
+        if 2 <= len(phrase_tokens(cleaned)) <= 4 and len(to_hashtag(cleaned)) <= 22:
+            add_hashtag(to_hashtag(cleaned))
 
     # F. Web hashtags — must match event/description/acronym (never location-only)
     web_tag_budget = 5
@@ -2183,6 +3435,8 @@ def process_content(
             if skip_landmark:
                 continue
         if body_l in allowed_shorts or is_strongly_event_relevant(raw, anchor) or is_strongly_event_relevant(spaced, anchor):
+            if not check_source_consensus(raw, anchor, processed_sources, min_sources=2, allow_social_only=True):
+                continue
             before = len(hashtags)
             add_hashtag(f"#{raw}")
             if len(hashtags) > before:
@@ -2211,6 +3465,7 @@ def process_content(
             or is_incomplete_fragment(item)
             or is_marketing_or_listicle_scrap(item)
             or is_clickbait_headline_scrap(item)
+            or is_abstract_headline_phrase(item)
         ):
             return
         if is_name_or_org_fragment(item, known_full_entities, allowed_singletons=allowed_shorts):
@@ -2232,11 +3487,22 @@ def process_content(
             return
         if norm.split() and norm.split()[-1] == "location":
             return
-        # People / titles must be full phrases (not "Gyanesh" or "Chief")
-        if len(toks) == 1 and norm not in acronym_shorts and norm not in allowed_shorts:
+        theme_norms = {normalize_term(t) for t in description_theme_tokens(description)}
+        # People / titles must be full phrases — except content-backed description themes
+        if (
+            len(toks) == 1
+            and norm not in acronym_shorts
+            and norm not in allowed_shorts
+            and norm not in theme_norms
+        ):
             return
-        # Non-entity scraps need distinctive event/location tokens (not just "outdoor")
-        is_seeded = norm in acronym_fulls or norm in acronym_shorts or norm in seeded_people
+        # Non-entity scraps need distinctive event/location/theme tokens
+        is_seeded = (
+            norm in acronym_fulls
+            or norm in acronym_shorts
+            or norm in seeded_people
+            or norm in theme_norms
+        )
         if not is_seeded and len(toks) >= 2 and not has_distinctive_event_signal(item, anchor):
             # Allow known people / venues / orgs already extracted
             known_norms = {
@@ -2251,6 +3517,8 @@ def process_content(
                 pass
             elif len(toks) >= 2 and not has_distinctive_event_signal(item, anchor):
                 return
+        if not check_source_consensus(item, anchor, processed_sources, allow_social_only=True):
+            return
 
         for ex in list(keywords):
             if is_subphrase_of(item, ex) and not is_allowed_singleton(item, allowed_shorts):
@@ -2282,12 +3550,12 @@ def process_content(
         if len(phrase_tokens(d)) < 2:
             continue
         add_keyword(d, require_strong=True)
-    # People: full names only (2+ tokens)
+    # People: full names only (2+ tokens); never emit coverage-only names
     for p, _ in Counter(main_leaders).most_common():
-        if len(phrase_tokens(p)) >= 2:
+        if len(phrase_tokens(p)) >= 2 and is_person_grounded_for_output(p, anchor, corpus):
             add_keyword(p, require_strong=False)
     for p, _ in Counter(participants).most_common():
-        if len(phrase_tokens(p)) >= 2:
+        if len(phrase_tokens(p)) >= 2 and is_person_grounded_for_output(p, anchor, corpus):
             add_keyword(p, require_strong=False)
     for o, _ in Counter(orgs).most_common():
         o_toks = phrase_tokens(o)
@@ -2346,13 +3614,33 @@ def process_content(
     if max_keywords is not None:
         keywords[:] = keywords[:max_keywords]
 
-    people_all = list(dict.fromkeys(main_leaders + participants + people_raw))
+    indic_people: List[str] = []
+    indic_campaigns: List[str] = []
+    languages_to_merge: List[Dict[str, Any]] = []
+    if regional_languages:
+        languages_to_merge = [entry for entry in regional_languages if entry]
+    elif regional_data:
+        languages_to_merge = [regional_data]
+    if languages_to_merge:
+        hashtags, keywords, indic_people, indic_campaigns = _merge_multilingual_terms(
+            hashtags,
+            keywords,
+            languages_to_merge,
+            search_results,
+            max_hashtags,
+            max_keywords,
+            anchor=anchor,
+            relevant_corpus=corpus,
+        )
+
+    people_all = list(dict.fromkeys(main_leaders + participants + people_raw + indic_people))
+    about_all = list(dict.fromkeys(about_topics + indic_campaigns))
 
     return {
         "hashtags": hashtags,
         "keywords": keywords,
         "entities": {
-            "about": list(dict.fromkeys(about_topics)),
+            "about": about_all,
             "main_leaders": list(dict.fromkeys(main_leaders)),
             "participants": list(dict.fromkeys(participants)),
             "people": people_all,

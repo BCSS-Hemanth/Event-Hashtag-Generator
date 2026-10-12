@@ -3,6 +3,15 @@ End-to-End Test for Event Keyword & Hashtag Search System.
 """
 
 import asyncio
+import sys
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from keyword_generator_main.app import (
     GenerateRequest,
     create_new_event,

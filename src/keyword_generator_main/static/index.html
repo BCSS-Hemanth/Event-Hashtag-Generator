@@ -59,6 +59,34 @@
             required></textarea>
         </div>
 
+        <!-- Language checklist dropdown -->
+        <div class="form-group">
+          <label for="language-dropdown-btn">Language</label>
+          <div class="language-dropdown" id="language-dropdown">
+            <button type="button" id="language-dropdown-btn" class="language-dropdown-btn" aria-haspopup="listbox" aria-expanded="false">
+              <span id="language-dropdown-label">Select languages…</span>
+              <span class="language-caret" aria-hidden="true">▾</span>
+            </button>
+            <div id="language-dropdown-panel" class="language-dropdown-panel hidden" role="listbox" aria-multiselectable="true">
+              <label class="language-option language-option-all">
+                <input type="checkbox" id="lang-all" value="all">
+                <span>All</span>
+              </label>
+              <div class="language-option-divider"></div>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="or"> <span>Odia</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="ta"> <span>Tamil</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="te"> <span>Telugu</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="kn"> <span>Kannada</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="ml"> <span>Malayalam</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="mr"> <span>Marathi</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="gu"> <span>Gujarati</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="bn"> <span>Bengali</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="pa"> <span>Punjabi</span></label>
+              <label class="language-option"><input type="checkbox" class="lang-option" value="hi"> <span>Hindi</span></label>
+            </div>
+          </div>
+          <small class="field-hint">Defaults from location when possible. Select All or multiple languages to extract from those languages in retrieved content.</small>
+        </div>
 
         <!-- Social Discussions Option -->
         <div class="form-group checkbox-group">

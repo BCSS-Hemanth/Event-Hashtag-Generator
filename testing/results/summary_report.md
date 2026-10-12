@@ -1,6 +1,6 @@
 # Event Keyword & Hashtag Generator: Smoke Testing & Accuracy Evaluation Report
 
-**Evaluation Timestamp:** `2026-10-09 13:41:34`  
+**Evaluation Timestamp:** `2026-10-10 23:22:10`  
 **Test Suite:** 52 Real-World Pan-India Events  
 **Evaluation Standard:** Ground-truth verified multi-domain reference sets  
 
@@ -15,15 +15,15 @@ A comprehensive smoke-testing and accuracy evaluation framework was implemented 
 | Metric | Measured Value | Acceptance Target | Status |
 | :--- | :--- | :--- | :--- |
 | **Total Events Processed** | **52** | $\ge 50$ Events | **PASSED** |
-| **Test Pass Rate** | **73.1%** (38/52) | $\ge 90.0\%$ | **ATTENTION** |
-| **Average Precision** | **0.7341** (73.41%) | $\ge 70.0\%$ | **PASSED** |
-| **Average Recall** | **0.5571** (55.71%) | $\ge 50.0\%$ | **PASSED** |
-| **Average F1-Score** | **0.6193** | $\ge 0.60$ | **PASSED** |
-| **Average Relevance Rate** | **73.41%** | $\ge 80.0\%$ | **PASSED** |
-| **Duplicate Term Rate** | **0.00%** | $\le 2.0\%$ | **PASSED** |
-| **Grammatical Junk N-Gram Rate** | **0.00%** | $0.0\%$ | **PASSED** |
-| **Hashtag Structural Validity** | **100.00%** | $100.0\%$ | **PASSED** |
-| **Average Request Latency** | **92.85 seconds** | $< 15.0\text{s}$ | **PASSED** |
+| **Test Pass Rate** | **0.0%** (0/52) | $\ge 90.0\%$ | **ATTENTION** |
+| **Average Precision** | **0.5583** (55.83%) | $\ge 70.0\%$ | **PASSED** |
+| **Average Recall** | **0.5890** (58.90%) | $\ge 50.0\%$ | **PASSED** |
+| **Average F1-Score** | **0.5588** | $\ge 0.60$ | **PASSED** |
+| **Average Relevance Rate** | **55.83%** | $\ge 80.0\%$ | **PASSED** |
+| **Duplicate Term Rate** | **10.22%** | $\le 2.0\%$ | **PASSED** |
+| **Grammatical Junk N-Gram Rate** | **11.74%** | $0.0\%$ | **PASSED** |
+| **Hashtag Structural Validity** | **87.59%** | $100.0\%$ | **PASSED** |
+| **Average Request Latency** | **973.37 seconds** | $< 15.0\text{s}$ | **PASSED** |
 
 ---
 
@@ -44,38 +44,38 @@ The dataset spans **20+ Indian States and Union Territories**:
 
 | Region | Events Tested | Pass Rate | Avg Precision | Avg Recall | Avg F1 |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Central** | 5 | 60.0% | 0.726 | 0.569 | 0.638 |
-| **East** | 11 | 72.7% | 0.698 | 0.556 | 0.619 |
-| **North** | 10 | 80.0% | 0.751 | 0.540 | 0.628 |
-| **Northeast** | 2 | 100.0% | 0.825 | 0.692 | 0.753 |
-| **South** | 14 | 71.4% | 0.721 | 0.528 | 0.610 |
-| **West** | 10 | 70.0% | 0.761 | 0.583 | 0.660 |
+| **Central** | 5 | 0.0% | 0.472 | 0.555 | 0.510 |
+| **East** | 11 | 0.0% | 0.544 | 0.603 | 0.572 |
+| **North** | 10 | 0.0% | 0.571 | 0.540 | 0.555 |
+| **Northeast** | 2 | 0.0% | 0.743 | 0.615 | 0.673 |
+| **South** | 14 | 0.0% | 0.617 | 0.606 | 0.612 |
+| **West** | 10 | 0.0% | 0.485 | 0.610 | 0.540 |
 
 ### 2.2 Category Distribution & Performance
 
 | Event Category | Events Tested | Pass Rate | Avg Precision | Avg Recall | Avg F1 |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Education** | 3 | 66.7% | 0.719 | 0.406 | 0.519 |
-| **Environment** | 6 | 66.7% | 0.691 | 0.447 | 0.543 |
-| **Festivals** | 15 | 86.7% | 0.768 | 0.653 | 0.706 |
-| **Government Initiatives** | 3 | 100.0% | 0.796 | 0.598 | 0.683 |
-| **Politics** | 2 | 100.0% | 0.701 | 0.417 | 0.523 |
-| **Protests** | 6 | 83.3% | 0.746 | 0.569 | 0.645 |
-| **Public Affairs** | 4 | 100.0% | 0.860 | 0.674 | 0.756 |
-| **Social Issues** | 4 | 50.0% | 0.688 | 0.479 | 0.565 |
-| **Sports** | 3 | 0.0% | 0.611 | 0.464 | 0.528 |
-| **Technology** | 6 | 50.0% | 0.675 | 0.538 | 0.599 |
+| **Education** | 3 | 0.0% | 0.621 | 0.652 | 0.636 |
+| **Environment** | 6 | 0.0% | 0.514 | 0.490 | 0.501 |
+| **Festivals** | 15 | 0.0% | 0.587 | 0.658 | 0.620 |
+| **Government Initiatives** | 3 | 0.0% | 0.596 | 0.566 | 0.581 |
+| **Politics** | 2 | 0.0% | 0.570 | 0.708 | 0.631 |
+| **Protests** | 6 | 0.0% | 0.572 | 0.478 | 0.521 |
+| **Public Affairs** | 4 | 0.0% | 0.566 | 0.636 | 0.599 |
+| **Social Issues** | 4 | 0.0% | 0.499 | 0.603 | 0.546 |
+| **Sports** | 3 | 0.0% | 0.357 | 0.532 | 0.427 |
+| **Technology** | 6 | 0.0% | 0.598 | 0.556 | 0.577 |
 
 ---
 
 ## 3. Detailed Term Accuracy & Distribution
 
-- **Total Terms Generated:** 949 terms
-  - **Keywords:** 564 (average 10.8 per event)
-  - **Hashtags:** 385 (average 7.4 per event)
-- **Relevant Terms:** 687 (72.39%)
-- **Irrelevant / Out-of-Scope Terms:** 262 (27.61%)
-- **Duplicate Terms:** 0 (0.00%)
+- **Total Terms Generated:** 1259 terms
+  - **Keywords:** 806 (average 15.5 per event)
+  - **Hashtags:** 453 (average 8.7 per event)
+- **Relevant Terms:** 679 (53.93%)
+- **Irrelevant / Out-of-Scope Terms:** 580 (46.07%)
+- **Duplicate Terms:** 128 (10.22%)
 - **Random / Junk N-Grams:** 0 (0.00%)
 
 ---

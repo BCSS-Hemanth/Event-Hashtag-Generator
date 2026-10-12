@@ -26,6 +26,32 @@ document.addEventListener("DOMContentLoaded", () => {
   const descriptionInput = document.getElementById("description-input");
   const includeSocialCheckbox = document.getElementById("include-social-checkbox");
 
+  const languageDropdown = document.getElementById("language-dropdown");
+  const languageDropdownBtn = document.getElementById("language-dropdown-btn");
+  const languageDropdownPanel = document.getElementById("language-dropdown-panel");
+  const languageDropdownLabel = document.getElementById("language-dropdown-label");
+  const langAllCheckbox = document.getElementById("lang-all");
+  const langOptionCheckboxes = () => Array.from(document.querySelectorAll(".lang-option"));
+
+  // Location → default language code (mirrors backend STATE/CITY maps)
+  const LOCATION_LANGUAGE_DEFAULTS = [
+    [/odisha|orissa|bhubaneswar|cuttack|puri|rourkela|sambalpur|berhampur|balasore|baleshwar/i, "or"],
+    [/tamil\s*nadu|puducherry|pondicherry|chennai|madras|coimbatore|madurai|trichy|tiruchirappalli|salem/i, "ta"],
+    [/telangana|andhra|hyderabad|secunderabad|warangal|visakhapatnam|vizag|vijayawada|guntur|tirupati/i, "te"],
+    [/karnataka|bengaluru|bangalore|mysuru|mysore|mangaluru|mangalore|hubli/i, "kn"],
+    [/kerala|lakshadweep|thiruvananthapuram|trivandrum|kochi|cochin|kozhikode|calicut|thrissur/i, "ml"],
+    [/maharashtra|goa|mumbai|bombay|pune|nagpur|nashik|thane/i, "mr"],
+    [/gujarat|daman|diu|ahmedabad|surat|vadodara|baroda|rajkot|gandhinagar/i, "gu"],
+    [/west\s*bengal|\bbengal\b|tripura|kolkata|calcutta|howrah|durgapur|siliguri/i, "bn"],
+    [/punjab|chandigarh|amritsar|ludhiana|jalandhar|patiala/i, "pa"],
+    [/delhi|\bncr\b|uttar\s*pradesh|bihar|madhya\s*pradesh|rajasthan|haryana|uttarakhand|himachal|jharkhand|chhattisgarh|lucknow|kanpur|varanasi|noida|ghaziabad|agra|patna|bhopal|indore|jaipur|jodhpur|gurugram|gurgaon|faridabad|ranchi|raipur|dehradun/i, "hi"],
+  ];
+
+  const LANGUAGE_NAMES = {
+    or: "Odia", ta: "Tamil", te: "Telugu", kn: "Kannada", ml: "Malayalam",
+    mr: "Marathi", gu: "Gujarati", bn: "Bengali", pa: "Punjabi", hi: "Hindi",
+  };
+
   const sourcesSection = document.getElementById("sources-section");
   const sourcesList = document.getElementById("sources-list");
 
@@ -77,19 +103,117 @@ document.addEventListener("DOMContentLoaded", () => {
     statusBanner.classList.add("hidden");
   }
 
-  function setLoading(loading, initialText = "") {
+  function detectDefaultLanguageCode(locationText) {
+    const text = (locationText || "").trim();
+    if (!text) return null;
+    for (const [pattern, code] of LOCATION_LANGUAGE_DEFAULTS) {
+      if (pattern.test(text)) return code;
+    }
+    return null;
+  }
+
+  function getSelectedLanguageCodes() {
+    if (langAllCheckbox && langAllCheckbox.checked) {
+      return ["all"];
+    }
+    return langOptionCheckboxes()
+      .filter((el) => el.checked)
+      .map((el) => el.value);
+  }
+
+  function updateLanguageDropdownLabel() {
+    if (!languageDropdownLabel) return;
+    if (langAllCheckbox && langAllCheckbox.checked) {
+      languageDropdownLabel.textContent = "All languages";
+      return;
+    }
+    const selected = langOptionCheckboxes().filter((el) => el.checked);
+    if (selected.length === 0) {
+      languageDropdownLabel.textContent = "Select languages…";
+      return;
+    }
+    if (selected.length === 1) {
+      languageDropdownLabel.textContent = LANGUAGE_NAMES[selected[0].value] || selected[0].value;
+      return;
+    }
+    languageDropdownLabel.textContent = `${selected.length} languages selected`;
+  }
+
+  function setLanguageSelection(codes, { syncAll = true } = {}) {
+    const codeSet = new Set((codes || []).map((c) => String(c).toLowerCase()));
+    const selectAll = codeSet.has("all");
+    langOptionCheckboxes().forEach((el) => {
+      el.checked = selectAll || codeSet.has(el.value);
+    });
+    if (langAllCheckbox) {
+      const options = langOptionCheckboxes();
+      langAllCheckbox.checked = selectAll || (syncAll && options.length > 0 && options.every((el) => el.checked));
+    }
+    updateLanguageDropdownLabel();
+  }
+
+  function applyLocationLanguageDefault() {
+    const code = detectDefaultLanguageCode(locationInput ? locationInput.value : "");
+    if (code) {
+      setLanguageSelection([code]);
+    }
+  }
+
+  function setupLanguageDropdown() {
+    if (!languageDropdownBtn || !languageDropdownPanel) return;
+
+    languageDropdownBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const open = languageDropdownPanel.classList.toggle("hidden") === false;
+      languageDropdownBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!languageDropdown || languageDropdown.contains(e.target)) return;
+      languageDropdownPanel.classList.add("hidden");
+      languageDropdownBtn.setAttribute("aria-expanded", "false");
+    });
+
+    if (langAllCheckbox) {
+      langAllCheckbox.addEventListener("change", () => {
+        if (langAllCheckbox.checked) {
+          setLanguageSelection(["all"]);
+        } else {
+          setLanguageSelection([]);
+        }
+      });
+    }
+
+    langOptionCheckboxes().forEach((el) => {
+      el.addEventListener("change", () => {
+        const options = langOptionCheckboxes();
+        if (langAllCheckbox) {
+          langAllCheckbox.checked = options.length > 0 && options.every((opt) => opt.checked);
+        }
+        updateLanguageDropdownLabel();
+      });
+    });
+
+    if (locationInput) {
+      locationInput.addEventListener("change", applyLocationLanguageDefault);
+      locationInput.addEventListener("blur", applyLocationLanguageDefault);
+    }
+
+    applyLocationLanguageDefault();
+    updateLanguageDropdownLabel();
+  }
+
+  function setLoading(loading, statusText = "") {
     state.isLoading = loading;
     generateBtn.disabled = loading;
     createEventBtn.disabled = loading;
     if (loading) {
       generateSpinner.classList.remove("hidden");
-      if (initialText) {
-        generateBtnText.textContent = initialText;
-        if (enginesDisplay) {
-          enginesDisplay.textContent = initialText;
-          enginesDisplay.className = "engines-display active";
-          enginesDisplay.classList.remove("hidden");
-        }
+      generateBtnText.textContent = "Generating...";
+      if (enginesDisplay) {
+        enginesDisplay.textContent = statusText || "Starting...";
+        enginesDisplay.className = "engines-display active";
+        enginesDisplay.classList.remove("hidden");
       }
     } else {
       generateSpinner.classList.add("hidden");
@@ -304,8 +428,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const includeSocial = includeSocialCheckbox ? includeSocialCheckbox.checked : false;
 
-    // Set loading state with initial feedback
-    setLoading(true, "Connecting to search...");
+    setLoading(true, "Starting...");
 
     try {
       const response = await fetch("/generate", {
@@ -319,6 +442,7 @@ document.addEventListener("DOMContentLoaded", () => {
           location: locationVal,
           description: descVal,
           include_social: includeSocial,
+          languages: getSelectedLanguageCodes(),
         }),
       });
 
@@ -364,10 +488,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
 
             if (payload.type === "status") {
-              // Real-time search engine or processing message from Wigolo backend
-              generateBtnText.textContent = payload.message;
+              // Button stays on "Generating..."; detailed steps show below it.
+              generateBtnText.textContent = "Generating...";
               if (enginesDisplay) {
-                enginesDisplay.textContent = payload.message;
+                enginesDisplay.textContent = payload.message || "Generating...";
                 enginesDisplay.className = "engines-display active";
                 enginesDisplay.classList.remove("hidden");
               }
@@ -426,7 +550,12 @@ document.addEventListener("DOMContentLoaded", () => {
         enginesDisplay.className = "engines-display hidden";
         enginesDisplay.textContent = "";
       }
-      showBanner(err.message || "An unexpected error occurred during generation.", "error");
+      const raw = (err && err.message) ? String(err.message).trim() : "";
+      const friendly =
+        !raw || /^error$/i.test(raw)
+          ? "Generation failed. Please check your inputs and try again."
+          : raw;
+      showBanner(friendly, "error");
     } finally {
       setLoading(false);
     }
@@ -441,6 +570,7 @@ document.addEventListener("DOMContentLoaded", () => {
     eventInput.value = "";
     locationInput.value = "";
     descriptionInput.value = "";
+    setLanguageSelection([]);
 
     // 2. Clear state
     state.hashtags = [];
@@ -481,5 +611,6 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initial render (Empty state, Edit mode off)
+  setupLanguageDropdown();
   renderReadOnlyView();
 });

@@ -6,13 +6,16 @@ hashtag validity, and entity alignment against ground-truth reference data.
 
 import difflib
 import re
+import unicodedata
 from typing import Any, Dict, List, Set, Tuple
 
 
 def normalize_term(term: str) -> str:
-    """Normalize term for comparison: strip hashtags, punctuation, and lowercase."""
-    cleaned = re.sub(r"[^A-Za-z0-9\s]", "", term.lstrip("#")).strip().lower()
-    return cleaned
+    """Normalize term for comparison: strip hashtags and punctuation, keep every script."""
+    cleaned = term.lstrip("#").strip().lower()
+    cleaned = re.sub(r"[^\w\s]", "", cleaned, flags=re.UNICODE)
+    cleaned = cleaned.replace("_", " ")
+    return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def token_overlap_ratio(cand: str, target: str) -> float:
@@ -100,11 +103,17 @@ def is_grammatical_junk(term: str) -> bool:
 
 
 def validate_hashtag_structure(tag: str) -> bool:
-    """Validate hashtag meets CamelCase #Tag structure, length 3-25, alphanumeric."""
+    """Validate a hashtag: # prefix, 3-25 chars, no spaces or punctuation."""
     if not tag or not tag.startswith("#"):
         return False
     body = tag[1:]
-    if not (3 <= len(body) <= 25) or not body.isalnum():
+    if not (3 <= len(body) <= 25):
+        return False
+    for ch in body:
+        if ch.isspace() or unicodedata.category(ch).startswith("P"):
+            return False
+        if ch.isalnum() or unicodedata.category(ch) in {"Mn", "Mc", "Me"}:
+            continue
         return False
     return True
 
@@ -135,6 +144,8 @@ def evaluate_event_result(
     duplicate_terms = []
     for t in all_generated:
         norm = normalize_term(t)
+        if not norm:
+            continue
         if norm in seen_norm:
             duplicate_terms.append(t)
         seen_norm.add(norm)
