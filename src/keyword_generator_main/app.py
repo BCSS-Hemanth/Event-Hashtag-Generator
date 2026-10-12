@@ -4,6 +4,7 @@ FastAPI Application for Event Keyword & Hashtag Search System.
 Endpoints:
 - POST /generate: Validates Event, Location, Description; searches web via Wigolo;
   extracts hashtags and keywords using deterministic Python processing.
+- GET /health: Liveness check.
 - POST /event-terms: Same pipeline as /generate; returns only hashtags and keywords.
 - POST /create-event: Clears Wigolo's search cache and resets server-side state.
 - GET /: Serves the frontend web interface.
@@ -88,6 +89,12 @@ class GenerateResponse(BaseModel):
     sources: List[SearchSource] = []
     engines_used: List[str] = []
     primary_engine: str = ""
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str
 
 
 class EventTermsRequest(BaseModel):
@@ -700,6 +707,16 @@ async def event_generator(req: GenerateRequest):
     except Exception as ex:
         logger.error("SSE pipeline execution failed: %s", ex, exc_info=True)
         yield f"data: {json.dumps({'type': 'error', 'detail': str(ex)})}\n\n"
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health() -> HealthResponse:
+    """Liveness check — confirms the API process is up and responding."""
+    return HealthResponse(
+        status="ok",
+        service="event-keyword-hashtag-search",
+        version=app.version or "1.0.0",
+    )
 
 
 @app.post("/generate", response_model=GenerateResponse)
